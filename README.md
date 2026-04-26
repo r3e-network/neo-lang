@@ -254,8 +254,9 @@ The default value of the type is:
 - `string`: empty string
 - `hash160`: all zeros
 - `hash256`: all zeros
-- `array`: empty array
 - `map`: empty map
+
+NOTE: `contract` cannot have array properties.
 
 Example:
 ```
@@ -389,6 +390,35 @@ It contains the following functions:
 - `void abort(string message)`: abort the current execution with the message.
 - `int min(int a, int b)`: return the minimum of two integers.
 - `int max(int a, int b)`: return the maximum of two integers.
+
+## Built-in Methods
+- `string`:
+  - `int string.size()`: return the bytes length;
+  - `string string.sub(int start, int length)`: return the sub-string by the start and length.
+
+- `buffer`:
+  - `int buffer.size()`: return the bytes length;
+  - `buffer buffer.sub(int start, int length)`: return the sub-buffer by the start and length;
+
+- `int`:
+  - `int int.sqrt()`: return the square root;
+  - `int int.modmul(int other, int modulus)`: return the modulus multiplication of the other and the modulus;
+  - `int int.modpow(int exponent, int modulus)`: return the modulus power of the exponent and the modulus;
+  - `int int.within(int minInclusive, int maxExclusive)`: return the value within the range `[minInclusive, maxExclusive)`;
+
+- `array`:
+  - `int array.size()`: return the length;
+  - `void array.push(type value)`: push the value to the array;
+  - `type array.pop()`: pop the last value from the array;
+  - `void array.clear()`: clear the array;
+
+- `map`:
+  - `int map.size()`: return the length;
+  - `type[] map.keys()`: return the keys as an array;
+  - `type[] map.values()`: return the values as an array;
+  - `bool map.has(key)`: return true if the key exists in the map;
+  - `void map.clear()`: clear the map;
+  - `void map.remove(key)`: remove the key from the map;
 
 ## Native Contracts
 - `ContractManagement`: 

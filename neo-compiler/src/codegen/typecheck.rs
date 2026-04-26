@@ -64,6 +64,12 @@ impl SourceFile {
             })
             .unwrap_or_default();
 
+        for field in &contract_field_storage {
+            if field.ty.is_array() {
+                return Err(err("contract cannot have array fields"));
+            }
+        }
+
         let contract_fields = contract_field_storage.as_slice();
         let ctx = TypeCheckContext {
             structs: &structs,
@@ -862,6 +868,11 @@ impl<'a> TypeCheckContext<'a> {
                     return self.check_runtime_call(field, args, env, in_contract_method);
                 }
             }
+            if let Some(ty) =
+                self.check_builtin_method_call(env, base.as_ref(), field, args, in_contract_method)?
+            {
+                return Ok(ty);
+            }
             if let Expr::Ident(recv) = base.as_ref() {
                 if let Some(struct_name) = env.value_struct.get(recv).cloned() {
                     let struct_decl = self
@@ -897,42 +908,9 @@ impl<'a> TypeCheckContext<'a> {
         }
 
         if let Expr::Ident(name) = callee {
-            match name.as_str() {
-                "assert" if args.len() == 2 => {
-                    let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
-                    let t1 = self.infer_expr(env, &args[1], in_contract_method)?;
-                    if t0 != Type::Bool {
-                        return Err(err(format!(
-                            "`assert` first argument must be bool, got `{t0:?}`"
-                        )));
-                    }
-                    if t1 != Type::String {
-                        return Err(err(format!(
-                            "`assert` second argument must be string, got `{t1:?}`"
-                        )));
-                    }
-                    return Ok(Type::Void);
-                }
-                "abort" if args.len() == 1 => {
-                    let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
-                    if t0 != Type::String {
-                        return Err(err(format!("`abort` expects string, got `{t0:?}`")));
-                    }
-                    return Ok(Type::Void);
-                }
-                "min" | "max" if args.len() == 2 => {
-                    let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
-                    let t1 = self.infer_expr(env, &args[1], in_contract_method)?;
-                    if t0 != Type::Int || t1 != Type::Int {
-                        return Err(err(format!(
-                            "`{name}` expects two int arguments, got `{t0:?}` and `{t1:?}`"
-                        )));
-                    }
-                    return Ok(Type::Int);
-                }
-                _ => {}
+            if let Some(ty) = self.check_builtin_call(env, name, args, in_contract_method)? {
+                return Ok(ty);
             }
-
             if let Some(fn_decl) = self.package_fns.get(name) {
                 if args.len() != fn_decl.params.len() {
                     return Err(err(format!(
@@ -957,6 +935,214 @@ impl<'a> TypeCheckContext<'a> {
         Err(err(
         "only package-level functions, built-in functions, struct methods, and runtime.* calls are supported",
     ))
+    }
+
+    fn check_builtin_method_call(
+        &self,
+        env: &mut FnEnv,
+        receiver: &Expr,
+        method: &str,
+        args: &[Expr],
+        in_contract_method: bool,
+    ) -> Result<Option<Type>, TypeError> {
+        let recv_ty = self.infer_expr(env, receiver, in_contract_method)?;
+        let err_method =
+            |msg: &str| -> TypeError { err(format!("built-in method `{method}`: {msg}")) };
+
+        match (&recv_ty, method) {
+            // string / bytestring-like
+            (Type::String | Type::Hash160 | Type::Hash256, "size") => {
+                if !args.is_empty() {
+                    return Err(err_method("expects 0 arguments"));
+                }
+                Ok(Some(Type::Int))
+            }
+            (Type::String | Type::Hash160 | Type::Hash256, "sub") => {
+                if args.len() != 2 {
+                    return Err(err_method("expects 2 arguments"));
+                }
+                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
+                let t1 = self.infer_expr(env, &args[1], in_contract_method)?;
+                if t0 != Type::Int || t1 != Type::Int {
+                    return Err(err_method("expects (int, int)"));
+                }
+                Ok(Some(recv_ty))
+            }
+            (Type::Buffer, "size") => {
+                if !args.is_empty() {
+                    return Err(err_method("expects 0 arguments"));
+                }
+                Ok(Some(Type::Int))
+            }
+            (Type::Buffer, "sub") => {
+                if args.len() != 2 {
+                    return Err(err_method("expects 2 arguments"));
+                }
+                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
+                let t1 = self.infer_expr(env, &args[1], in_contract_method)?;
+                if t0 != Type::Int || t1 != Type::Int {
+                    return Err(err_method("expects (int, int)"));
+                }
+                Ok(Some(Type::Buffer))
+            }
+            (Type::Int, "sqrt") => {
+                if !args.is_empty() {
+                    return Err(err_method("expects 0 arguments"));
+                }
+                Ok(Some(Type::Int))
+            }
+            (Type::Int, "modmul") | (Type::Int, "modpow") => {
+                if args.len() != 2 {
+                    return Err(err_method("expects 2 arguments"));
+                }
+                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
+                let t1 = self.infer_expr(env, &args[1], in_contract_method)?;
+                if t0 != Type::Int || t1 != Type::Int {
+                    return Err(err_method("expects (int, int)"));
+                }
+                Ok(Some(Type::Int))
+            }
+            (Type::Int, "within") => {
+                if args.len() != 2 {
+                    return Err(err_method("expects 2 arguments"));
+                }
+                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
+                let t1 = self.infer_expr(env, &args[1], in_contract_method)?;
+                if t0 != Type::Int || t1 != Type::Int {
+                    return Err(err_method("expects (int, int)"));
+                }
+                // NeoVM `WITHIN` returns bool (x in [a, b)).
+                Ok(Some(Type::Bool))
+            }
+
+            // array
+            (Type::Array(_), "size") => {
+                if !args.is_empty() {
+                    return Err(err_method("expects 0 arguments"));
+                }
+                Ok(Some(Type::Int))
+            }
+            (Type::Array(elem), "push") => {
+                if args.len() != 1 {
+                    return Err(err_method("expects 1 argument"));
+                }
+                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
+                if !t0.can_assign_to(elem.as_ref()) {
+                    return Err(err_method("type mismatch"));
+                }
+                Ok(Some(Type::Void))
+            }
+            (Type::Array(elem), "pop") => {
+                if !args.is_empty() {
+                    return Err(err_method("expects 0 arguments"));
+                }
+                Ok(Some((**elem).clone()))
+            }
+            (Type::Array(_), "clear") => {
+                if !args.is_empty() {
+                    return Err(err_method("expects 0 arguments"));
+                }
+                Ok(Some(Type::Void))
+            }
+            (Type::Map { .. }, "size") => {
+                if !args.is_empty() {
+                    return Err(err_method("expects 0 arguments"));
+                }
+                Ok(Some(Type::Int))
+            }
+            (Type::Map { key, .. }, "keys") => {
+                if !args.is_empty() {
+                    return Err(err_method("expects 0 arguments"));
+                }
+                Ok(Some(Type::Array(key.clone())))
+            }
+            (Type::Map { value, .. }, "values") => {
+                if !args.is_empty() {
+                    return Err(err_method("expects 0 arguments"));
+                }
+                Ok(Some(Type::Array(value.clone())))
+            }
+            (Type::Map { key, .. }, "has") => {
+                if args.len() != 1 {
+                    return Err(err_method("expects 1 argument"));
+                }
+                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
+                if !t0.can_assign_to(key.as_ref()) {
+                    return Err(err_method("type mismatch"));
+                }
+                Ok(Some(Type::Bool))
+            }
+            (Type::Map { .. }, "clear") => {
+                if !args.is_empty() {
+                    return Err(err_method("expects 0 arguments"));
+                }
+                Ok(Some(Type::Void))
+            }
+            (Type::Map { key, .. }, "remove") => {
+                if args.len() != 1 {
+                    return Err(err_method("expects 1 argument"));
+                }
+                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
+                if !t0.can_assign_to(key.as_ref()) {
+                    return Err(err_method("type mismatch"));
+                }
+                Ok(Some(Type::Void))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn check_builtin_call(
+        &self,
+        env: &mut FnEnv,
+        name: &str,
+        args: &[Expr],
+        in_contract_method: bool,
+    ) -> Result<Option<Type>, TypeError> {
+        match name {
+            "assert" => {
+                if args.len() != 2 {
+                    return Err(err("`assert` expects 2 arguments"));
+                }
+                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
+                let t1 = self.infer_expr(env, &args[1], in_contract_method)?;
+                if t0 != Type::Bool {
+                    return Err(err(format!(
+                        "`assert` first argument must be bool, got `{t0:?}`"
+                    )));
+                }
+                if t1 != Type::String {
+                    return Err(err(format!(
+                        "`assert` second argument must be string, got `{t1:?}`"
+                    )));
+                }
+                return Ok(Some(Type::Void));
+            }
+            "abort" => {
+                if args.len() != 1 {
+                    return Err(err("`abort` expects 1 argument"));
+                }
+                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
+                if t0 != Type::String {
+                    return Err(err(format!("`abort` expects string, got `{t0:?}`")));
+                }
+                return Ok(Some(Type::Void));
+            }
+            "min" | "max" => {
+                if args.len() != 2 {
+                    return Err(err("`min` or `max` expects 2 arguments"));
+                }
+                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
+                let t1 = self.infer_expr(env, &args[1], in_contract_method)?;
+                if t0 != Type::Int || t1 != Type::Int {
+                    return Err(err(format!(
+                        "`{name}` expects two int arguments, got `{t0:?}` and `{t1:?}`"
+                    )));
+                }
+                return Ok(Some(Type::Int));
+            }
+            _ => Ok(None),
+        }
     }
 
     fn check_runtime_call(

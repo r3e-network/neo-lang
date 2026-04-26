@@ -244,23 +244,23 @@ impl Codegen {
 
         let storage_fields = (!contract_fields.is_empty()).then_some(contract_fields.as_slice());
         let mut package_fn_arity = HashMap::new();
-        for f in &source.functions {
+        for func in &source.functions {
             if package_fn_arity
-                .insert(f.name.clone(), f.params.len())
+                .insert(func.name.clone(), func.params.len())
                 .is_some()
             {
                 return Err(CodegenError::Unsupported(format!(
                     "duplicate top-level function `{}` in the same file",
-                    f.name
+                    func.name
                 )));
             }
         }
 
         let mut package_functions = Vec::with_capacity(source.functions.len());
-        for f in &source.functions {
-            let compiled = compile_function(f, &source.structs, None, &package_fn_arity)?;
+        for func in &source.functions {
+            let compiled = compile_function(func, &source.structs, None, &package_fn_arity)?;
             package_functions.push(CompiledFunction {
-                name: f.name.clone(),
+                name: func.name.clone(),
                 contract: None,
                 instructions: compiled.instructions,
                 call_patches: compiled.call_patches,
@@ -268,10 +268,11 @@ impl Codegen {
         }
 
         let mut struct_methods = Vec::new();
-        for s in &source.structs {
-            for m in &s.methods {
-                let lowered = lower_struct_method(&s.name, m);
-                let compiled = compile_function(&lowered, &source.structs, None, &package_fn_arity)?;
+        for struct_decl in &source.structs {
+            for method in &struct_decl.methods {
+                let lowered = lower_struct_method(&struct_decl.name, method);
+                let compiled =
+                    compile_function(&lowered, &source.structs, None, &package_fn_arity)?;
                 struct_methods.push(CompiledFunction {
                     name: lowered.name.clone(),
                     contract: None,
@@ -282,14 +283,18 @@ impl Codegen {
         }
 
         let mut contract_methods = Vec::new();
-        if let Some(contract) = &source.contract {
-            for member in &contract.members {
-                if let ContractMember::Function(m) = member {
-                    let compiled =
-                        compile_function(m, &source.structs, storage_fields, &package_fn_arity)?;
+        if let Some(contract_decl) = &source.contract {
+            for member in &contract_decl.members {
+                if let ContractMember::Function(method) = member {
+                    let compiled = compile_function(
+                        method,
+                        &source.structs,
+                        storage_fields,
+                        &package_fn_arity,
+                    )?;
                     contract_methods.push(CompiledFunction {
-                        name: m.name.clone(),
-                        contract: Some(contract.name.clone()),
+                        name: method.name.clone(),
+                        contract: Some(contract_decl.name.clone()),
                         instructions: compiled.instructions,
                         call_patches: compiled.call_patches,
                     });
@@ -358,6 +363,30 @@ mod tests {
     }
 
     #[test]
+    fn codegen_map_remove_emits_remove_with_key_on_top() {
+        let src = r#"
+            package demo;
+            contract C {
+                int f(map[int, int] m) {
+                    m.remove(1);
+                    return 0;
+                }
+            }
+        "#;
+        let sf = parse_source_file(src).unwrap();
+        let out = Codegen::new().codegen_source_file(&sf).unwrap();
+        let method = &out.contract_methods[0];
+        let remove_idx = method
+            .instructions
+            .iter()
+            .position(|i| i.opcode == OpCode::REMOVE)
+            .expect("expected REMOVE opcode for map.remove");
+        assert!(remove_idx >= 2, "expected map/key pushes before REMOVE");
+        assert_eq!(method.instructions[remove_idx - 2].opcode, OpCode::LDARG0);
+        assert_eq!(method.instructions[remove_idx - 1].opcode, OpCode::PUSH1);
+    }
+
+    #[test]
     fn codegen_empty_source_no_functions() {
         let sf = parse_source_file("package p;").unwrap();
         let out = Codegen::new().codegen_source_file(&sf).unwrap();
@@ -376,7 +405,7 @@ mod tests {
     }
 
     #[test]
-    fn codegen_struct_instance_call_emits_linked_call_l() {
+    fn codegen_struct_call_emits_linked_call_l() {
         let src = r#"
             struct Point {
                 int x;
@@ -395,13 +424,13 @@ mod tests {
         "#;
         let sf = parse_source_file(src).unwrap();
         let out = Codegen::new().codegen_source_file(&sf).unwrap();
-        let cfn = &out.contract_methods[0];
+        let func = &out.contract_methods[0];
         assert!(
-            cfn.instructions.iter().any(|i| i.opcode == OpCode::CALL_L),
+            func.instructions.iter().any(|i| i.opcode == OpCode::CALL_L),
             "expected CALL_L for p.dist2(q)"
         );
         assert!(
-            cfn.call_patches.is_empty(),
+            func.call_patches.is_empty(),
             "linker should apply and clear CALL_L patches"
         );
     }
@@ -417,13 +446,13 @@ mod tests {
         let sf = parse_source_file(src).unwrap();
         let out = Codegen::new().codegen_source_file(&sf).unwrap();
         assert_eq!(out.package_functions.len(), 1);
-        let cfn = &out.contract_methods[0];
+        let func = &out.contract_methods[0];
         assert!(
-            cfn.instructions.iter().any(|i| i.opcode == OpCode::CALL_L),
+            func.instructions.iter().any(|i| i.opcode == OpCode::CALL_L),
             "expected CALL_L for add(1, 2)"
         );
         assert!(
-            cfn.call_patches.is_empty(),
+            func.call_patches.is_empty(),
             "linker should resolve CALL_L to package `add`"
         );
     }
@@ -439,18 +468,18 @@ mod tests {
         "#;
         let sf = parse_source_file(src).unwrap();
         let out = Codegen::new().codegen_source_file(&sf).unwrap();
-        let cfn = &out.contract_methods[0];
-        let call_idx = cfn
+        let func = &out.contract_methods[0];
+        let call_index = func
             .instructions
             .iter()
             .position(|i| i.opcode == OpCode::CALL_L)
             .expect("CALL_L");
         assert!(
-            call_idx >= 2,
+            call_index >= 2,
             "expected two push instructions before CALL_L"
         );
-        assert_eq!(cfn.instructions[call_idx - 2].opcode, OpCode::PUSH2);
-        assert_eq!(cfn.instructions[call_idx - 1].opcode, OpCode::PUSH1);
+        assert_eq!(func.instructions[call_index - 2].opcode, OpCode::PUSH2);
+        assert_eq!(func.instructions[call_index - 1].opcode, OpCode::PUSH1);
     }
 
     #[test]
@@ -462,19 +491,19 @@ mod tests {
         "#;
         let sf = parse_source_file(src).unwrap();
         let out = Codegen::new().codegen_source_file(&sf).unwrap();
-        let four_fn = out
+        let func = out
             .package_functions
             .iter()
             .find(|f| f.name == "four")
             .expect("four()");
-        let call_ls = four_fn
+        let call_ls = func
             .instructions
             .iter()
             .filter(|i| i.opcode == OpCode::CALL_L)
             .count();
         assert_eq!(call_ls, 2, "two() + two() → two CALL_L sites");
         assert!(
-            four_fn.call_patches.is_empty(),
+            func.call_patches.is_empty(),
             "CALL_L from package fn to package fn should link"
         );
     }

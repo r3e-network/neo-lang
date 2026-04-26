@@ -30,6 +30,9 @@ impl FunctionIr {
 
             for (out, instr) in bb.instrs.iter_mut() {
                 // Only pure computations are eligible.
+                if instr.has_side_effects() {
+                    continue;
+                }
                 let key = match instr {
                     Instr::Const(literal) => Some(PureKey::Const(literal.clone())),
                     Instr::StructFieldGet { base, index } => {
@@ -67,6 +70,83 @@ impl FunctionIr {
                             index: *index,
                         })
                     }
+                    Instr::Size { value } => {
+                        *value = norm(*value, &subst);
+                        Some(PureKey::Size(*value))
+                    }
+                    Instr::Keys { map } => {
+                        *map = norm(*map, &subst);
+                        Some(PureKey::Keys(*map))
+                    }
+                    Instr::Values { map } => {
+                        *map = norm(*map, &subst);
+                        Some(PureKey::Values(*map))
+                    }
+                    Instr::HasKey { map, key } => {
+                        *map = norm(*map, &subst);
+                        *key = norm(*key, &subst);
+                        Some(PureKey::HasKey { map: *map, key: *key })
+                    }
+                    Instr::SubStr {
+                        value,
+                        start,
+                        length,
+                    } => {
+                        *value = norm(*value, &subst);
+                        *start = norm(*start, &subst);
+                        *length = norm(*length, &subst);
+                        Some(PureKey::SubStr {
+                            value: *value,
+                            start: *start,
+                            length: *length,
+                        })
+                    }
+                    Instr::Sqrt { value } => {
+                        *value = norm(*value, &subst);
+                        Some(PureKey::Sqrt(*value))
+                    }
+                    Instr::ModMul {
+                        value,
+                        other,
+                        modulus,
+                    } => {
+                        *value = norm(*value, &subst);
+                        *other = norm(*other, &subst);
+                        *modulus = norm(*modulus, &subst);
+                        Some(PureKey::ModMul {
+                            value: *value,
+                            other: *other,
+                            modulus: *modulus,
+                        })
+                    }
+                    Instr::ModPow {
+                        value,
+                        exponent,
+                        modulus,
+                    } => {
+                        *value = norm(*value, &subst);
+                        *exponent = norm(*exponent, &subst);
+                        *modulus = norm(*modulus, &subst);
+                        Some(PureKey::ModPow {
+                            value: *value,
+                            exponent: *exponent,
+                            modulus: *modulus,
+                        })
+                    }
+                    Instr::Within {
+                        value,
+                        min_inclusive,
+                        max_exclusive,
+                    } => {
+                        *value = norm(*value, &subst);
+                        *min_inclusive = norm(*min_inclusive, &subst);
+                        *max_exclusive = norm(*max_exclusive, &subst);
+                        Some(PureKey::Within {
+                            value: *value,
+                            min_inclusive: *min_inclusive,
+                            max_exclusive: *max_exclusive,
+                        })
+                    }
                     Instr::Cast { value, ty } => {
                         *value = norm(*value, &subst);
                         Some(PureKey::Cast {
@@ -90,23 +170,7 @@ impl FunctionIr {
                             right: *right,
                         })
                     }
-                    Instr::IndexSet { .. }
-                    | Instr::StructFieldSet { .. }
-                    | Instr::ContractStorageGet { .. }
-                    | Instr::ContractStoragePut { .. }
-                    | Instr::ContractMapStorageGet { .. }
-                    | Instr::ContractMapStoragePut { .. }
-                    | Instr::ContractMapStorageCompound { .. }
-                    | Instr::Assert { .. }
-                    | Instr::Abort { .. }
-                    | Instr::Emit { .. }
-                    | Instr::PackageCall { .. }
-                    | Instr::StructPack { .. }
-                    | Instr::StructInstanceCall { .. }
-                    | Instr::RuntimeLog { .. }
-                    | Instr::ArrayPack { .. }
-                    | Instr::MapPack { .. }
-                    | Instr::EvalAst(_) => None,
+                    _ => None,
                 };
 
                 if let Some(k) = key {
@@ -141,6 +205,31 @@ enum PureKey {
     IndexGet {
         base: ValueRef,
         index: ValueRef,
+    },
+    Size(ValueRef),
+    Keys(ValueRef),
+    Values(ValueRef),
+    HasKey { map: ValueRef, key: ValueRef },
+    SubStr {
+        value: ValueRef,
+        start: ValueRef,
+        length: ValueRef,
+    },
+    Sqrt(ValueRef),
+    ModMul {
+        value: ValueRef,
+        other: ValueRef,
+        modulus: ValueRef,
+    },
+    ModPow {
+        value: ValueRef,
+        exponent: ValueRef,
+        modulus: ValueRef,
+    },
+    Within {
+        value: ValueRef,
+        min_inclusive: ValueRef,
+        max_exclusive: ValueRef,
     },
     Copy(ValueRef),
     Unary {
@@ -241,30 +330,11 @@ impl FunctionIr {
         for bb in self.blocks.values() {
             collect_uses_in_term(&bb.term, &mut work);
         }
-        // Side-effecting instructions must be treated as roots: even if their result is unused,
+        // Instructions that must be preserved even if their output is unused are treated as roots:
         // their operands are still required for correctness.
         for bb in self.blocks.values() {
             for (_out, instr) in &bb.instrs {
-                if matches!(
-                    instr,
-                    Instr::EvalAst(_)
-                        | Instr::IndexSet { .. }
-                        | Instr::StructFieldSet { .. }
-                        | Instr::ContractStorageGet { .. }
-                        | Instr::ContractStoragePut { .. }
-                        | Instr::ContractMapStorageGet { .. }
-                        | Instr::ContractMapStoragePut { .. }
-                        | Instr::ContractMapStorageCompound { .. }
-                        | Instr::Assert { .. }
-                        | Instr::Abort { .. }
-                        | Instr::Emit { .. }
-                        | Instr::PackageCall { .. }
-                        | Instr::StructPack { .. }
-                        | Instr::StructInstanceCall { .. }
-                        | Instr::RuntimeLog { .. }
-                        | Instr::ArrayPack { .. }
-                        | Instr::MapPack { .. }
-                ) {
+                if instr.must_keep_even_if_unused() {
                     collect_uses_in_instr(instr, &mut work);
                 }
             }
@@ -280,27 +350,8 @@ impl FunctionIr {
 
         for bb in self.blocks.values_mut() {
             bb.instrs.retain(|(out, instr)| {
-                if matches!(
-                    instr,
-                    Instr::EvalAst(_)
-                        | Instr::IndexSet { .. }
-                        | Instr::StructFieldSet { .. }
-                        | Instr::ContractStorageGet { .. }
-                        | Instr::ContractStoragePut { .. }
-                        | Instr::ContractMapStorageGet { .. }
-                        | Instr::ContractMapStoragePut { .. }
-                        | Instr::ContractMapStorageCompound { .. }
-                        | Instr::Assert { .. }
-                        | Instr::Abort { .. }
-                        | Instr::Emit { .. }
-                        | Instr::PackageCall { .. }
-                        | Instr::StructPack { .. }
-                        | Instr::StructInstanceCall { .. }
-                        | Instr::RuntimeLog { .. }
-                        | Instr::ArrayPack { .. }
-                        | Instr::MapPack { .. }
-                ) {
-                    return true; // side effects / conservative
+                if instr.must_keep_even_if_unused() {
+                    return true;
                 }
                 used.contains(out)
             });
@@ -360,6 +411,94 @@ fn collect_uses_in_instr(instr: &Instr, out: &mut VecDeque<ValueId>) {
                 out.push_back(*x);
             }
         }
+        Instr::Size { value } => {
+            if let ValueRef::Value(x) = value {
+                out.push_back(*x);
+            }
+        }
+        Instr::Keys { map } => {
+            if let ValueRef::Value(x) = map {
+                out.push_back(*x);
+            }
+        }
+        Instr::Values { map } => {
+            if let ValueRef::Value(x) = map {
+                out.push_back(*x);
+            }
+        }
+        Instr::HasKey { map, key } => {
+            if let ValueRef::Value(x) = map {
+                out.push_back(*x);
+            }
+            if let ValueRef::Value(x) = key {
+                out.push_back(*x);
+            }
+        }
+        Instr::SubStr {
+            value,
+            start,
+            length,
+        } => {
+            if let ValueRef::Value(x) = value {
+                out.push_back(*x);
+            }
+            if let ValueRef::Value(x) = start {
+                out.push_back(*x);
+            }
+            if let ValueRef::Value(x) = length {
+                out.push_back(*x);
+            }
+        }
+        Instr::Sqrt { value } => {
+            if let ValueRef::Value(x) = value {
+                out.push_back(*x);
+            }
+        }
+        Instr::ModMul {
+            value,
+            other,
+            modulus,
+        } => {
+            if let ValueRef::Value(x) = value {
+                out.push_back(*x);
+            }
+            if let ValueRef::Value(x) = other {
+                out.push_back(*x);
+            }
+            if let ValueRef::Value(x) = modulus {
+                out.push_back(*x);
+            }
+        }
+        Instr::ModPow {
+            value,
+            exponent,
+            modulus,
+        } => {
+            if let ValueRef::Value(x) = value {
+                out.push_back(*x);
+            }
+            if let ValueRef::Value(x) = exponent {
+                out.push_back(*x);
+            }
+            if let ValueRef::Value(x) = modulus {
+                out.push_back(*x);
+            }
+        }
+        Instr::Within {
+            value,
+            min_inclusive,
+            max_exclusive,
+        } => {
+            if let ValueRef::Value(x) = value {
+                out.push_back(*x);
+            }
+            if let ValueRef::Value(x) = min_inclusive {
+                out.push_back(*x);
+            }
+            if let ValueRef::Value(x) = max_exclusive {
+                out.push_back(*x);
+            }
+        }
         Instr::IndexSet { base, index, value } => {
             if let ValueRef::Value(x) = base {
                 out.push_back(*x);
@@ -460,7 +599,7 @@ fn collect_uses_in_instr(instr: &Instr, out: &mut VecDeque<ValueId>) {
                 }
             }
         }
-        Instr::StructInstanceCall { recv, args, .. } => {
+        Instr::StructCall { recv, args, .. } => {
             if let ValueRef::Value(x) = recv {
                 out.push_back(*x);
             }
@@ -472,6 +611,29 @@ fn collect_uses_in_instr(instr: &Instr, out: &mut VecDeque<ValueId>) {
         }
         Instr::RuntimeLog { message } => {
             if let ValueRef::Value(x) = message {
+                out.push_back(*x);
+            }
+        }
+        Instr::RuntimeNotify { event_name, state } => {
+            if let ValueRef::Value(x) = event_name {
+                out.push_back(*x);
+            }
+            if let ValueRef::Value(x) = state {
+                out.push_back(*x);
+            }
+        }
+        Instr::ContractCallReadOnly {
+            contract,
+            method,
+            params,
+        } => {
+            if let ValueRef::Value(x) = contract {
+                out.push_back(*x);
+            }
+            if let ValueRef::Value(x) = method {
+                out.push_back(*x);
+            }
+            if let ValueRef::Value(x) = params {
                 out.push_back(*x);
             }
         }
@@ -492,6 +654,32 @@ fn collect_uses_in_instr(instr: &Instr, out: &mut VecDeque<ValueId>) {
                 }
             }
         }
+        Instr::ArrayAppend { array, value } => {
+            if let ValueRef::Value(x) = array {
+                out.push_back(*x);
+            }
+            if let ValueRef::Value(x) = value {
+                out.push_back(*x);
+            }
+        }
+        Instr::ArrayPop { array } => {
+            if let ValueRef::Value(x) = array {
+                out.push_back(*x);
+            }
+        }
+        Instr::ClearItems { collection } => {
+            if let ValueRef::Value(x) = collection {
+                out.push_back(*x);
+            }
+        }
+        Instr::Remove { map, key } => {
+            if let ValueRef::Value(x) = map {
+                out.push_back(*x);
+            }
+            if let ValueRef::Value(x) = key {
+                out.push_back(*x);
+            }
+        }
         Instr::ContractStorageGet { .. } => {}
         Instr::EvalAst(_) | Instr::Const(_) => {}
     }
@@ -505,10 +693,64 @@ fn rewrite_value_refs_in_instr(instr: &mut Instr, subst: &HashMap<ValueId, Value
             *base = rewrite(*base, subst);
             *index = rewrite(*index, subst);
         }
+        Instr::Size { value } => *value = rewrite(*value, subst),
+        Instr::Keys { map } => *map = rewrite(*map, subst),
+        Instr::Values { map } => *map = rewrite(*map, subst),
+        Instr::HasKey { map, key } => {
+            *map = rewrite(*map, subst);
+            *key = rewrite(*key, subst);
+        }
+        Instr::SubStr {
+            value,
+            start,
+            length,
+        } => {
+            *value = rewrite(*value, subst);
+            *start = rewrite(*start, subst);
+            *length = rewrite(*length, subst);
+        }
+        Instr::Sqrt { value } => *value = rewrite(*value, subst),
+        Instr::ModMul {
+            value,
+            other,
+            modulus,
+        } => {
+            *value = rewrite(*value, subst);
+            *other = rewrite(*other, subst);
+            *modulus = rewrite(*modulus, subst);
+        }
+        Instr::ModPow {
+            value,
+            exponent,
+            modulus,
+        } => {
+            *value = rewrite(*value, subst);
+            *exponent = rewrite(*exponent, subst);
+            *modulus = rewrite(*modulus, subst);
+        }
+        Instr::Within {
+            value,
+            min_inclusive,
+            max_exclusive,
+        } => {
+            *value = rewrite(*value, subst);
+            *min_inclusive = rewrite(*min_inclusive, subst);
+            *max_exclusive = rewrite(*max_exclusive, subst);
+        }
         Instr::IndexSet { base, index, value } => {
             *base = rewrite(*base, subst);
             *index = rewrite(*index, subst);
             *value = rewrite(*value, subst);
+        }
+        Instr::ArrayAppend { array, value } => {
+            *array = rewrite(*array, subst);
+            *value = rewrite(*value, subst);
+        }
+        Instr::ArrayPop { array } => *array = rewrite(*array, subst),
+        Instr::ClearItems { collection } => *collection = rewrite(*collection, subst),
+        Instr::Remove { map, key } => {
+            *map = rewrite(*map, subst);
+            *key = rewrite(*key, subst);
         }
         Instr::StructFieldSet { base, value, .. } => {
             *base = rewrite(*base, subst);
@@ -561,7 +803,7 @@ fn rewrite_value_refs_in_instr(instr: &mut Instr, subst: &HashMap<ValueId, Value
                 *value = rewrite(*value, subst);
             }
         }
-        Instr::StructInstanceCall { recv, args, .. } => {
+        Instr::StructCall { recv, args, .. } => {
             *recv = rewrite(*recv, subst);
             for arg in args {
                 *arg = rewrite(*arg, subst);
@@ -569,6 +811,19 @@ fn rewrite_value_refs_in_instr(instr: &mut Instr, subst: &HashMap<ValueId, Value
         }
         Instr::RuntimeLog { message } => {
             *message = rewrite(*message, subst);
+        }
+        Instr::RuntimeNotify { event_name, state } => {
+            *event_name = rewrite(*event_name, subst);
+            *state = rewrite(*state, subst);
+        }
+        Instr::ContractCallReadOnly {
+            contract,
+            method,
+            params,
+        } => {
+            *contract = rewrite(*contract, subst);
+            *method = rewrite(*method, subst);
+            *params = rewrite(*params, subst);
         }
         Instr::ArrayPack { elements } => {
             for element in elements {

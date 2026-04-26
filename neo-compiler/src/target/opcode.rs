@@ -888,7 +888,7 @@ pub enum OpCode {
     ///  2. The target is a map and the key is not a primitive type.
     PICKITEM = 0xCE,
 
-    /// The item on top of main stack is removed and appended to the second item on top of the main stack.
+    /// The array on top of main stack is removed and appended to the second item on top of the main stack.
     /// When we use this opcode, we should dup the second item on top of the main stack before using it.
     APPEND = 0xCF,
 
@@ -914,7 +914,7 @@ pub enum OpCode {
     ///  2. The target is a map and the key is not a primitive type.
     REMOVE = 0xD2,
 
-    /// Remove all the items from the compound-type.
+    /// Remove all the items from the compound-type(array, map).
     /// Using this opcode will need to dup the compound-type before using it.
     CLEARITEMS = 0xD3,
 

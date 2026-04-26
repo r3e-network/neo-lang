@@ -59,19 +59,19 @@ mod tests {
         "#;
         let sf = parse_source_file(source).unwrap();
         assert_eq!(sf.structs.len(), 1);
-        let s = &sf.structs[0];
-        assert_eq!(s.name, "Transfer");
-        assert_eq!(s.fields.len(), 2);
-        assert_eq!(s.fields[0].name, "sender");
-        assert_eq!(s.fields[0].ty, Type::Hash160);
-        assert!(s.fields[0].init.is_none());
-        assert_eq!(s.fields[1].name, "amount");
-        assert_eq!(s.fields[1].ty, Type::Int);
+        let struct_decl = &sf.structs[0];
+        assert_eq!(struct_decl.name, "Transfer");
+        assert_eq!(struct_decl.fields.len(), 2);
+        assert_eq!(struct_decl.fields[0].name, "sender");
+        assert_eq!(struct_decl.fields[0].ty, Type::Hash160);
+        assert!(struct_decl.fields[0].init.is_none());
+        assert_eq!(struct_decl.fields[1].name, "amount");
+        assert_eq!(struct_decl.fields[1].ty, Type::Int);
         assert_eq!(
-            s.fields[1].init,
+            struct_decl.fields[1].init,
             Some(Expr::Literal(Literal::Int("0".into())))
         );
-        assert!(s.methods.is_empty());
+        assert!(struct_decl.methods.is_empty());
     }
 
     #[test]
@@ -88,13 +88,13 @@ mod tests {
         "#;
         let sf = parse_source_file(source).unwrap();
         assert_eq!(sf.structs.len(), 1);
-        let s = &sf.structs[0];
-        assert_eq!(s.name, "Point");
-        assert_eq!(s.fields.len(), 2);
-        assert_eq!(s.methods.len(), 1);
-        assert_eq!(s.methods[0].name, "distanceTo");
-        assert_eq!(s.methods[0].params.len(), 1);
-        assert_eq!(s.methods[0].params[0].name, "other");
+        let struct_decl = &sf.structs[0];
+        assert_eq!(struct_decl.name, "Point");
+        assert_eq!(struct_decl.fields.len(), 2);
+        assert_eq!(struct_decl.methods.len(), 1);
+        assert_eq!(struct_decl.methods[0].name, "distanceTo");
+        assert_eq!(struct_decl.methods[0].params.len(), 1);
+        assert_eq!(struct_decl.methods[0].params[0].name, "other");
     }
 
     #[test]
@@ -106,13 +106,13 @@ mod tests {
         }
         "#;
         let sf = parse_source_file(source).unwrap();
-        let c = sf.contract.as_ref().unwrap();
-        assert_eq!(c.name, "Example");
-        assert_eq!(c.attributes.len(), 2);
-        assert_eq!(c.attributes[0].name, "auther");
-        assert_eq!(c.attributes[0].args, vec!["AuthorName".to_string()]);
-        assert_eq!(c.attributes[1].name, "version");
-        assert_eq!(c.attributes[1].args, vec!["0.0.1".to_string()]);
+        let contract = sf.contract.as_ref().unwrap();
+        assert_eq!(contract.name, "Example");
+        assert_eq!(contract.attributes.len(), 2);
+        assert_eq!(contract.attributes[0].name, "auther");
+        assert_eq!(contract.attributes[0].args, vec!["AuthorName".to_string()]);
+        assert_eq!(contract.attributes[1].name, "version");
+        assert_eq!(contract.attributes[1].args, vec!["0.0.1".to_string()]);
     }
 
     #[test]
@@ -126,9 +126,9 @@ mod tests {
         }
         "#;
         let sf = parse_source_file(source).unwrap();
-        let m = &sf.contract.as_ref().unwrap().members;
-        assert_eq!(m.len(), 4);
-        match &m[0] {
+        let members = &sf.contract.as_ref().unwrap().members;
+        assert_eq!(members.len(), 4);
+        match &members[0] {
             ContractMember::ConstProp(p) => {
                 assert_eq!(p.name, "symbol");
                 assert_eq!(p.ty, Type::String);
@@ -136,7 +136,7 @@ mod tests {
             }
             _ => panic!("expected const"),
         }
-        match &m[2] {
+        match &members[2] {
             ContractMember::Field(f) => {
                 assert_eq!(f.name, "totalSupply");
                 assert_eq!(f.ty, Type::Int);
@@ -144,7 +144,7 @@ mod tests {
             }
             _ => panic!("expected field"),
         }
-        match &m[3] {
+        match &members[3] {
             ContractMember::Field(f) => {
                 assert_eq!(f.name, "balances");
                 assert_eq!(
@@ -190,16 +190,16 @@ mod tests {
         "#;
         let sf = parse_source_file(source).unwrap();
         match &sf.contract.as_ref().unwrap().members[0] {
-            ContractMember::Function(f) => {
-                assert_eq!(f.name, "transfer");
-                assert_eq!(f.return_ty, Type::Bool);
-                assert_eq!(f.attributes.len(), 1);
-                assert_eq!(f.attributes[0].name, "pure");
-                assert!(f.attributes[0].args.is_empty());
-                assert_eq!(f.params.len(), 2);
-                match &f.body.stmts[..] {
+            ContractMember::Function(func) => {
+                assert_eq!(func.name, "transfer");
+                assert_eq!(func.return_ty, Type::Bool);
+                assert_eq!(func.attributes.len(), 1);
+                assert_eq!(func.attributes[0].name, "pure");
+                assert!(func.attributes[0].args.is_empty());
+                assert_eq!(func.params.len(), 2);
+                match &func.body.stmts[..] {
                     [Stmt::Return(Some(Expr::Literal(Literal::Bool(true))))] => {}
-                    _ => panic!("unexpected body: {:?}", f.body.stmts),
+                    _ => panic!("unexpected body: {:?}", func.body.stmts),
                 }
             }
             _ => panic!("expected function"),
@@ -216,9 +216,9 @@ mod tests {
         "#;
         let sf = parse_source_file(source).unwrap();
         assert_eq!(sf.functions.len(), 1);
-        let f = &sf.functions[0];
-        assert_eq!(f.name, "add");
-        assert_eq!(f.return_ty, Type::Int);
+        let func = &sf.functions[0];
+        assert_eq!(func.name, "add");
+        assert_eq!(func.return_ty, Type::Int);
     }
 
     #[test]
@@ -523,15 +523,15 @@ mod tests {
         }
         "#;
         let sf = parse_source_file(source).unwrap();
-        let s = &sf.functions[0].body.stmts;
+        let stmts = &sf.functions[0].body.stmts;
         assert!(matches!(
-            &s[0],
+            &stmts[0],
             Stmt::If {
                 else_block: Some(_),
                 ..
             }
         ));
-        assert!(matches!(&s[1], Stmt::While { .. }));
+        assert!(matches!(&stmts[1], Stmt::While { .. }));
     }
 
     #[test]
@@ -547,12 +547,12 @@ mod tests {
         }
         "#;
         let sf = parse_source_file(source).unwrap();
-        let s = &sf.functions[0].body.stmts;
-        match &s[0] {
+        let stmts = &sf.functions[0].body.stmts;
+        match &stmts[0] {
             Stmt::ForArray { item, .. } => assert_eq!(item, "item"),
             _ => panic!(),
         }
-        match &s[1] {
+        match &stmts[1] {
             Stmt::ForMap { key, value, .. } => {
                 assert_eq!(key, "k");
                 assert_eq!(value, "v");
@@ -572,15 +572,15 @@ mod tests {
         }
         "#;
         let sf = parse_source_file(source).unwrap();
-        let s = &sf.functions[0].body.stmts;
-        match &s[0] {
+        let stmts = &sf.functions[0].body.stmts;
+        match &stmts[0] {
             Stmt::Emit { name, args } => {
                 assert_eq!(name, "transfer");
                 assert_eq!(args.len(), 3);
             }
             _ => panic!(),
         }
-        assert!(matches!(&s[1], Stmt::Block(_)));
+        assert!(matches!(&stmts[1], Stmt::Block(_)));
     }
 
     #[test]
@@ -593,12 +593,12 @@ mod tests {
         "#;
         let sf = parse_source_file(source).unwrap();
         assert_eq!(sf.structs.len(), 1);
-        let f = &sf.functions[0];
-        assert_eq!(f.return_ty, Type::Void);
-        assert_eq!(f.params[0].ty, Type::Named("Point".into()));
-        assert_eq!(f.params[1].ty, Type::Array(Box::new(Type::Int)));
+        let func = &sf.functions[0];
+        assert_eq!(func.return_ty, Type::Void);
+        assert_eq!(func.params[0].ty, Type::Named("Point".into()));
+        assert_eq!(func.params[1].ty, Type::Array(Box::new(Type::Int)));
         assert_eq!(
-            f.params[2].ty,
+            func.params[2].ty,
             Type::Array(Box::new(Type::Named("Point".into())))
         );
     }

@@ -393,18 +393,18 @@ fn should_use_ir_pipeline(func: &FunctionDecl) -> bool {
 }
 
 /// [`StructDecl`] method with implicit receiver: becomes `StructName::methodName(self, ...)` for codegen.
-pub fn lower_struct_method(struct_name: &str, m: &FunctionDecl) -> FunctionDecl {
+pub fn lower_struct_method(struct_name: &str, method: &FunctionDecl) -> FunctionDecl {
     let mut params = vec![Param {
         ty: Type::Named(struct_name.to_string()),
         name: "self".into(),
     }];
-    params.extend(m.params.iter().cloned());
+    params.extend(method.params.iter().cloned());
     FunctionDecl {
-        attributes: m.attributes.clone(),
-        return_ty: m.return_ty.clone(),
-        name: format!("{struct_name}::{}", m.name),
+        attributes: method.attributes.clone(),
+        return_ty: method.return_ty.clone(),
+        name: format!("{struct_name}::{}", method.name),
         params,
-        body: m.body.clone(),
+        body: method.body.clone(),
     }
 }
 
@@ -700,11 +700,11 @@ mod tests {
         "#;
         let sf = parse_source_file(src).unwrap();
         let mut pkg = HashMap::new();
-        for f in &sf.functions {
-            pkg.insert(f.name.clone(), f.params.len());
+        for func in &sf.functions {
+            pkg.insert(func.name.clone(), func.params.len());
         }
-        let f = sf.functions.iter().find(|f| f.name == "f").unwrap();
-        let compiled = compile_function(f, &[], None, &pkg).unwrap();
+        let func = sf.functions.iter().find(|f| f.name == "f").unwrap();
+        let compiled = compile_function(func, &[], None, &pkg).unwrap();
         assert!(
             compiled
                 .instructions
@@ -728,9 +728,9 @@ mod tests {
         "#;
         let sf = parse_source_file(src).unwrap();
         let structs = &sf.structs;
-        let m = &sf.structs[0].methods[0];
-        let f = lower_struct_method("P", m);
-        let compiled = compile_function(&f, structs, None, &empty_pkg()).unwrap();
+        let method = &sf.structs[0].methods[0];
+        let func = lower_struct_method("P", method);
+        let compiled = compile_function(&func, structs, None, &empty_pkg()).unwrap();
         assert!(
             compiled
                 .instructions
@@ -751,12 +751,11 @@ mod tests {
         "#;
         let sf = parse_source_file(src).unwrap();
         let mut pkg = HashMap::new();
-        for f in &sf.functions {
-            pkg.insert(f.name.clone(), f.params.len());
+        for func in &sf.functions {
+            pkg.insert(func.name.clone(), func.params.len());
         }
-        let f = sf.functions.iter().find(|f| f.name == "f").unwrap();
-        let compiled = compile_function(f, &[], None, &pkg).unwrap();
-
+        let func = sf.functions.iter().find(|f| f.name == "f").unwrap();
+        let compiled = compile_function(func, &[], None, &pkg).unwrap();
         let has_and_opcode = compiled
             .instructions
             .iter()
@@ -859,10 +858,10 @@ mod tests {
         let structs = &sf.structs;
         let compiled = compile_function(&sf.functions[0], structs, None, &empty_pkg())
             .expect("compile function should not fail");
-        let inst = compiled.instructions;
-        assert!(inst.iter().any(|i| i.opcode == OpCode::PACK));
+        let instructions = compiled.instructions;
+        assert!(instructions.iter().any(|i| i.opcode == OpCode::PACK));
         let mut pick = 0u32;
-        for w in inst.windows(2) {
+        for w in instructions.windows(2) {
             if w[0].opcode == OpCode::PUSH0 && w[1].opcode == OpCode::PICKITEM {
                 pick += 1;
             }

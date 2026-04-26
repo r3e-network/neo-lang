@@ -48,6 +48,69 @@ pub enum Instr {
         base: ValueRef,
         index: ValueRef,
     },
+    /// `SIZE(value)` for array/map/buffer/string (NeoVM `SIZE`).
+    Size {
+        value: ValueRef,
+    },
+    /// `KEYS(map)` (NeoVM `KEYS`) — returns an array of keys.
+    Keys {
+        map: ValueRef,
+    },
+    /// `VALUES(map)` (NeoVM `VALUES`) — returns an array of values.
+    Values {
+        map: ValueRef,
+    },
+    /// `HASKEY(map, key)` (NeoVM `HASKEY`) — returns bool.
+    HasKey {
+        map: ValueRef,
+        key: ValueRef,
+    },
+    /// `APPEND(array, value)` (NeoVM `APPEND`); expression value is `array`.
+    ArrayAppend {
+        array: ValueRef,
+        value: ValueRef,
+    },
+    /// `POPITEM(array)` (NeoVM `POPITEM`).
+    ArrayPop {
+        array: ValueRef,
+    },
+    /// `CLEARITEMS(collection)` (NeoVM `CLEARITEMS`); expression value is `collection`.
+    ClearItems {
+        collection: ValueRef,
+    },
+    /// `REMOVE(map, key)` (NeoVM `REMOVE`).
+    Remove {
+        map: ValueRef,
+        key: ValueRef,
+    },
+    /// `SUBSTR(value, start, length)` (NeoVM `SUBSTR`).
+    SubStr {
+        value: ValueRef,
+        start: ValueRef,
+        length: ValueRef,
+    },
+    /// `SQRT(value)` (NeoVM `SQRT`).
+    Sqrt {
+        value: ValueRef,
+    },
+    /// `MODMUL(value, other, modulus)` (NeoVM `MODMUL`).
+    ModMul {
+        value: ValueRef,
+        other: ValueRef,
+        modulus: ValueRef,
+    },
+    /// `MODPOW(value, exponent, modulus)` (NeoVM `MODPOW`).
+    ModPow {
+        value: ValueRef,
+        exponent: ValueRef,
+        modulus: ValueRef,
+    },
+    /// `WITHIN(value, min_inclusive, max_exclusive)` (NeoVM `WITHIN`).
+    Within {
+        value: ValueRef,
+        min_inclusive: ValueRef,
+        max_exclusive: ValueRef,
+    },
     /// `base[index] = value` (NeoVM `SETITEM`); result is `value`.
     IndexSet {
         base: ValueRef,
@@ -146,7 +209,7 @@ pub enum Instr {
         field_values: Vec<ValueRef>,
     },
     /// `recv.method(args...)` on a struct-typed variable → `CALL_L` to `Struct::method`.
-    StructInstanceCall {
+    StructCall {
         struct_name: String,
         method: String,
         recv: ValueRef,
@@ -155,6 +218,17 @@ pub enum Instr {
     /// `runtime.log(message)`.
     RuntimeLog {
         message: ValueRef,
+    },
+    /// `runtime.notify(event_name, state_array)` (Syscall `System.Runtime.Notify`).
+    RuntimeNotify {
+        event_name: ValueRef,
+        state: ValueRef,
+    },
+    /// `runtime.contractCall(contract, method, params)` with injected read-only flags.
+    ContractCallReadOnly {
+        contract: ValueRef,
+        method: ValueRef,
+        params: ValueRef,
     },
     /// Array literal `[...]` as NeoVM `PACK`.
     ArrayPack {
@@ -174,6 +248,10 @@ impl Instr {
             self,
             Instr::IndexSet { .. }
                 | Instr::StructFieldSet { .. }
+                | Instr::ArrayAppend { .. }
+                | Instr::ArrayPop { .. }
+                | Instr::ClearItems { .. }
+                | Instr::Remove { .. }
                 | Instr::ContractStoragePut { .. }
                 | Instr::ContractMapStoragePut { .. }
                 | Instr::ContractMapStorageCompound { .. }
@@ -181,9 +259,43 @@ impl Instr {
                 | Instr::Abort { .. }
                 | Instr::Emit { .. }
                 | Instr::PackageCall { .. }
-                | Instr::StructInstanceCall { .. }
+                | Instr::StructCall { .. }
                 | Instr::RuntimeLog { .. }
+                | Instr::RuntimeNotify { .. }
+                | Instr::ContractCallReadOnly { .. }
                 | Instr::EvalAst(_)
+        )
+    }
+
+    /// Whether this instruction must be preserved even if its output value is unused.
+    ///
+    /// This is intentionally **more conservative** than `has_side_effects()` because some
+    /// instructions may be observable (e.g. runtime/storage behavior) or required for
+    /// correctness even when their result is not consumed.
+    pub(crate) fn must_keep_even_if_unused(&self) -> bool {
+        matches!(
+            self,
+            Instr::EvalAst(_)
+                | Instr::IndexSet { .. }
+                | Instr::StructFieldSet { .. }
+                | Instr::ArrayAppend { .. }
+                | Instr::ArrayPop { .. }
+                | Instr::ClearItems { .. }
+                | Instr::Remove { .. }
+                | Instr::ContractStoragePut { .. }
+                | Instr::ContractMapStoragePut { .. }
+                | Instr::ContractMapStorageCompound { .. }
+                | Instr::Assert { .. }
+                | Instr::Abort { .. }
+                | Instr::Emit { .. }
+                | Instr::PackageCall { .. }
+                | Instr::StructPack { .. }
+                | Instr::StructCall { .. }
+                | Instr::RuntimeLog { .. }
+                | Instr::RuntimeNotify { .. }
+                | Instr::ContractCallReadOnly { .. }
+                // | Instr::ArrayPack { .. }
+                // | Instr::MapPack { .. }
         )
     }
 }
