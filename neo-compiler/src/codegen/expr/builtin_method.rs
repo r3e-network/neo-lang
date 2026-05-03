@@ -115,6 +115,10 @@ impl ExprGen<'_, '_> {
                 if args.len() != 1 {
                     return Err(err_method("expects 1 argument"));
                 }
+                if let Some((map_name, key_ty, _)) = self.contract_storage_map_receiver(receiver) {
+                    self.emit_contract_map_has(&map_name, &key_ty, &args[0])?;
+                    return Ok(true);
+                }
                 self.compile_expr(receiver)?;
                 self.compile_expr(&args[0])?;
                 self.builder.emit(OpCode::HASKEY);
@@ -123,6 +127,10 @@ impl ExprGen<'_, '_> {
             "remove" => {
                 if args.len() != 1 {
                     return Err(err_method("expects 1 argument"));
+                }
+                if let Some((map_name, key_ty, _)) = self.contract_storage_map_receiver(receiver) {
+                    self.emit_contract_map_delete(&map_name, &key_ty, &args[0])?;
+                    return Ok(true);
                 }
                 self.compile_expr(receiver)?;
                 self.compile_expr(&args[0])?;

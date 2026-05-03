@@ -93,6 +93,8 @@ impl Instr {
             Instr::ContractStorageGet { .. } => {}
             Instr::ContractStoragePut { value, .. } => bump(*value, out),
             Instr::ContractMapStorageGet { key, .. } => bump(*key, out),
+            Instr::ContractMapStorageHas { key, .. } => bump(*key, out),
+            Instr::ContractMapStorageRemove { key, .. } => bump(*key, out),
             Instr::ContractMapStoragePut { key, value, .. } => {
                 bump(*key, out);
                 bump(*value, out);
@@ -256,6 +258,8 @@ impl Instr {
             Instr::ContractStorageGet { .. } => {}
             Instr::ContractStoragePut { value, .. } => bump(use_bb, *value, def_block, out),
             Instr::ContractMapStorageGet { key, .. } => bump(use_bb, *key, def_block, out),
+            Instr::ContractMapStorageHas { key, .. } => bump(use_bb, *key, def_block, out),
+            Instr::ContractMapStorageRemove { key, .. } => bump(use_bb, *key, def_block, out),
             Instr::ContractMapStoragePut { key, value, .. } => {
                 bump(use_bb, *key, def_block, out);
                 bump(use_bb, *value, def_block, out);

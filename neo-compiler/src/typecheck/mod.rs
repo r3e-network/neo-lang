@@ -2,6 +2,9 @@
 //!
 //! Expression types must match declarations and operators (strong typing).
 
+#[cfg(test)]
+mod tests;
+
 use std::collections::HashMap;
 
 use thiserror::Error;
@@ -168,15 +171,20 @@ enum FnType {
 
 struct FnEnv {
     scopes: Vec<HashMap<String, Type>>,
+
     /// Variable name → struct type name (for `var.field`)
     value_struct: HashMap<String, String>,
+
+    /// Whether the function is a contract method.
+    is_contract_fn: bool,
 }
 
 impl FnEnv {
-    fn new() -> Self {
+    fn new(is_contract_fn: bool) -> Self {
         Self {
             scopes: vec![HashMap::new()],
             value_struct: HashMap::new(),
+            is_contract_fn,
         }
     }
 
@@ -262,7 +270,8 @@ fn syscall_return_type(syscall: &crate::target::syscall::Syscall) -> Type {
 
 impl<'a> TypeCheckContext<'a> {
     fn check_function(&self, func: &FunctionDecl, fn_type: FnType) -> Result<(), TypeError> {
-        let mut env = FnEnv::new();
+        let is_contract_fn = matches!(fn_type, FnType::ContractMethod { .. });
+        let mut env = FnEnv::new(is_contract_fn);
         match &fn_type {
             FnType::Package => {}
             FnType::StructMethod { struct_name } => {
@@ -281,8 +290,7 @@ impl<'a> TypeCheckContext<'a> {
             }
         }
 
-        let in_contract = matches!(fn_type, FnType::ContractMethod { .. });
-        self.check_block(&mut env, &func.body, &func.return_ty, in_contract)?;
+        self.check_block(&mut env, &func.body, &func.return_ty)?;
 
         Ok(())
     }
@@ -292,27 +300,20 @@ impl<'a> TypeCheckContext<'a> {
         env: &mut FnEnv,
         block: &Block,
         return_ty: &Type,
-        in_contract_method: bool,
     ) -> Result<(), TypeError> {
         env.push_scope();
         for stmt in &block.stmts {
-            self.check_stmt(env, stmt, return_ty, in_contract_method)?;
+            self.check_stmt(env, stmt, return_ty)?;
         }
         env.pop_scope();
         Ok(())
     }
 
-    fn check_stmt(
-        &self,
-        env: &mut FnEnv,
-        stmt: &Stmt,
-        return_ty: &Type,
-        in_contract_method: bool,
-    ) -> Result<(), TypeError> {
+    fn check_stmt(&self, env: &mut FnEnv, stmt: &Stmt, return_ty: &Type) -> Result<(), TypeError> {
         match stmt {
             Stmt::Var { name, init } => {
                 let ty = if let Some(expr) = init {
-                    let ty = self.infer_expr(env, expr, in_contract_method)?;
+                    let ty = self.infer_expr(env, expr)?;
                     if let Expr::StructLit {
                         name: struct_name, ..
                     } = expr
@@ -327,7 +328,7 @@ impl<'a> TypeCheckContext<'a> {
                 Ok(())
             }
             Stmt::Expr(expr) => {
-                self.infer_expr(env, expr, in_contract_method)?;
+                self.infer_expr(env, expr)?;
                 Ok(())
             }
             Stmt::If {
@@ -335,26 +336,26 @@ impl<'a> TypeCheckContext<'a> {
                 then_block,
                 else_block,
             } => {
-                let ty = self.infer_expr(env, cond, in_contract_method)?;
+                let ty = self.infer_expr(env, cond)?;
                 if ty != Type::Bool {
                     return Err(err(format!("`if` condition must be bool, got `{ty:?}`")));
                 }
-                self.check_block(env, then_block, return_ty, in_contract_method)?;
+                self.check_block(env, then_block, return_ty)?;
                 if let Some(else_block) = else_block {
-                    self.check_block(env, else_block, return_ty, in_contract_method)?;
+                    self.check_block(env, else_block, return_ty)?;
                 }
                 Ok(())
             }
             Stmt::While { cond, body } => {
-                let ty = self.infer_expr(env, cond, in_contract_method)?;
+                let ty = self.infer_expr(env, cond)?;
                 if ty != Type::Bool {
                     return Err(err(format!("`while` condition must be bool, got `{ty:?}`")));
                 }
-                self.check_block(env, body, return_ty, in_contract_method)?;
+                self.check_block(env, body, return_ty)?;
                 Ok(())
             }
             Stmt::ForArray { item, iter, body } => {
-                let iter_ty = self.infer_expr(env, iter, in_contract_method)?;
+                let iter_ty = self.infer_expr(env, iter)?;
                 let elem_ty = match iter_ty {
                     Type::Array(ty) => *ty,
                     _ => {
@@ -365,7 +366,7 @@ impl<'a> TypeCheckContext<'a> {
                 };
                 env.push_scope();
                 env.declare(item, elem_ty)?;
-                self.check_block(env, body, return_ty, in_contract_method)?;
+                self.check_block(env, body, return_ty)?;
                 env.pop_scope();
                 Ok(())
             }
@@ -375,7 +376,7 @@ impl<'a> TypeCheckContext<'a> {
                 map,
                 body,
             } => {
-                let map_ty = self.infer_expr(env, map, in_contract_method)?;
+                let map_ty = self.infer_expr(env, map)?;
                 let (key_ty, value_ty) = match map_ty {
                     Type::Map { key, value } => (*key, *value),
                     _ => {
@@ -385,7 +386,7 @@ impl<'a> TypeCheckContext<'a> {
                 env.push_scope();
                 env.declare(key, key_ty)?;
                 env.declare(value, value_ty)?;
-                self.check_block(env, body, return_ty, in_contract_method)?;
+                self.check_block(env, body, return_ty)?;
                 env.pop_scope();
                 Ok(())
             }
@@ -403,7 +404,7 @@ impl<'a> TypeCheckContext<'a> {
                     if matches!(return_ty, Type::Void) {
                         return Err(err("void function must not return a value"));
                     }
-                    let ty = self.infer_expr(env, expr, in_contract_method)?;
+                    let ty = self.infer_expr(env, expr)?;
                     if !ty.can_assign_to(return_ty) {
                         Err(err(format!(
                             "return type mismatch: expected `{return_ty:?}`, got `{ty:?}`"
@@ -426,7 +427,7 @@ impl<'a> TypeCheckContext<'a> {
                     )));
                 }
                 for (expr, param) in args.iter().zip(event_decl.params.iter()) {
-                    let ty = self.infer_expr(env, expr, in_contract_method)?;
+                    let ty = self.infer_expr(env, expr)?;
                     if !ty.can_assign_to(&param.ty) {
                         return Err(err(format!(
                         "`emit {name}` argument `{}` type mismatch: expected `{:?}`, got `{ty:?}`",
@@ -436,16 +437,11 @@ impl<'a> TypeCheckContext<'a> {
                 }
                 Ok(())
             }
-            Stmt::Block(block) => self.check_block(env, block, return_ty, in_contract_method),
+            Stmt::Block(block) => self.check_block(env, block, return_ty),
         }
     }
 
-    fn infer_expr(
-        &self,
-        env: &mut FnEnv,
-        expr: &Expr,
-        in_contract_method: bool,
-    ) -> Result<Type, TypeError> {
+    fn infer_expr(&self, env: &mut FnEnv, expr: &Expr) -> Result<Type, TypeError> {
         match expr {
             Expr::Literal(lit) => match lit {
                 Literal::Null => Ok(Type::Any),
@@ -461,64 +457,31 @@ impl<'a> TypeCheckContext<'a> {
                 "`self` cannot stand alone; use `self.field` or pass as receiver",
             )),
             Expr::Cast { expr: inner, ty } => {
-                self.infer_expr(env, inner, in_contract_method)?;
+                self.infer_expr(env, inner)?;
                 Ok(ty.clone())
             }
-            Expr::Paren(inner) => self.infer_expr(env, inner, in_contract_method),
+            Expr::Paren(inner) => self.infer_expr(env, inner),
             Expr::Unary { op, expr: inner } => {
-                let ty = self.infer_expr(env, inner, in_contract_method)?;
+                let ty = self.infer_expr(env, inner)?;
                 match op {
-                    UnaryOp::Not => {
-                        if ty != Type::Bool {
-                            return Err(err(format!("`!` expects bool, got `{ty:?}`")));
-                        }
-                        Ok(Type::Bool)
-                    }
+                    UnaryOp::Not => self.infer_expr_unary_not(ty),
                     UnaryOp::Positive | UnaryOp::Negative | UnaryOp::BitNot => {
-                        if ty != Type::Int {
-                            return Err(err(format!("unary op expects int, got `{ty:?}`")));
-                        }
-                        Ok(Type::Int)
+                        self.infer_expr_unary_int(ty)
                     }
                 }
             }
             Expr::Binary { op, left, right } => {
-                let lt = self.infer_expr(env, left, in_contract_method)?;
-                let rt = self.infer_expr(env, right, in_contract_method)?;
+                let lt = self.infer_expr(env, left)?;
+                let rt = self.infer_expr(env, right)?;
                 match op {
-                    BinaryOp::And | BinaryOp::Or => {
-                        if lt != Type::Bool || rt != Type::Bool {
-                            return Err(err(format!(
-                                "logical op expects bool operands, got `{lt:?}` and `{rt:?}`"
-                            )));
-                        }
-                        Ok(Type::Bool)
-                    }
+                    BinaryOp::And | BinaryOp::Or => self.infer_expr_binary_logical(lt, rt),
                     BinaryOp::Eq
                     | BinaryOp::Ne
                     | BinaryOp::Lt
                     | BinaryOp::Le
                     | BinaryOp::Gt
-                    | BinaryOp::Ge => {
-                        let ok = lt == rt && lt.is_primitive();
-                        if !ok {
-                            return Err(err(format!(
-                            "comparison requires matching primitive types, got `{lt:?}` and `{rt:?}`"
-                        )));
-                        }
-                        Ok(Type::Bool)
-                    }
-                    BinaryOp::Add => {
-                        if lt == Type::Int && rt == Type::Int {
-                            Ok(Type::Int)
-                        } else if lt == Type::String && rt == Type::String {
-                            Ok(Type::String)
-                        } else {
-                            Err(err(format!(
-                                "`+` expects int+int or string+string, got `{lt:?}` and `{rt:?}`"
-                            )))
-                        }
-                    }
+                    | BinaryOp::Ge => self.infer_expr_binary_compare(lt, rt),
+                    BinaryOp::Add => self.infer_expr_binary_add(lt, rt),
                     BinaryOp::Mul
                     | BinaryOp::Div
                     | BinaryOp::Mod
@@ -527,210 +490,286 @@ impl<'a> TypeCheckContext<'a> {
                     | BinaryOp::Shr
                     | BinaryOp::BitAnd
                     | BinaryOp::BitOr
-                    | BinaryOp::BitXor => {
-                        if lt != Type::Int || rt != Type::Int {
-                            return Err(err(format!(
-                                "arithmetic op expects int operands, got `{lt:?}` and `{rt:?}`"
-                            )));
-                        }
-                        Ok(Type::Int)
-                    }
+                    | BinaryOp::BitXor => self.infer_expr_binary_arith(lt, rt),
                 }
             }
             Expr::Member { base, field } => match base.as_ref() {
-                Expr::Ident(var) => {
-                    let struct_name = env
-                        .value_struct
-                        .get(var)
-                        .ok_or_else(|| err("member access needs a variable with struct type"))?;
-                    let struct_decl = self
-                        .structs
-                        .get(struct_name)
-                        .ok_or_else(|| err(format!("unknown struct type `{struct_name}`")))?;
-                    let struct_field = struct_decl
-                        .fields
-                        .iter()
-                        .find(|f| f.name == *field)
-                        .ok_or_else(|| {
-                            err(format!("struct `{struct_name}` has no field `{field}`"))
-                        })?;
-                    Ok(struct_field.ty.clone())
-                }
-                Expr::Self_ => {
-                    if in_contract_method {
-                        if !self.contract_fields.is_empty() {
-                            if let Some(cf) = self.contract_fields.iter().find(|f| f.name == *field)
-                            {
-                                if cf.ty.is_map() {
-                                    return Err(err(format!(
-                                        "use `self.{field}[key]` for contract map fields (whole-field load is not supported)"
-                                    )));
-                                }
-                                return Ok(cf.ty.clone());
-                            }
-                        }
-                    }
-                    let struct_name = env.value_struct.get("self").ok_or_else(|| {
-                        err("`self.member` needs a contract field or struct `self` parameter")
-                    })?;
-                    let struct_decl = self
-                        .structs
-                        .get(struct_name)
-                        .ok_or_else(|| err(format!("unknown struct type `{struct_name}`")))?;
-                    let struct_field = struct_decl
-                        .fields
-                        .iter()
-                        .find(|f| f.name == *field)
-                        .ok_or_else(|| {
-                            err(format!("struct `{struct_name}` has no field `{field}`"))
-                        })?;
-                    Ok(struct_field.ty.clone())
-                }
+                Expr::Ident(var) => self.infer_expr_member_ident(env, var, field),
+                Expr::Self_ => self.infer_expr_member_self(env, field),
                 _ => Err(err(
                     "only `variable.field` or `self.field` member access is allowed",
                 )),
             },
-            Expr::Index { base, index } => {
-                if let Some((key_ty, val_ty)) =
-                    self.contract_self_map_types(base.as_ref(), in_contract_method)?
-                {
-                    let index_ty = self.infer_expr(env, index, in_contract_method)?;
-                    if !index_ty.can_assign_to(&key_ty) {
-                        return Err(err(format!(
-                            "map index type mismatch: expected `{key_ty:?}`, got `{index_ty:?}`"
-                        )));
-                    }
-                    return Ok(val_ty);
-                }
-                let base_ty = self.infer_expr(env, base, in_contract_method)?;
-                let index_ty = self.infer_expr(env, index, in_contract_method)?;
-                match base_ty {
-                    Type::Array(elem) => {
-                        if index_ty != Type::Int {
-                            return Err(err(format!(
-                                "array index must be int, got `{index_ty:?}`"
-                            )));
-                        }
-                        Ok(*elem)
-                    }
-                    Type::Map { key, value } => {
-                        if !index_ty.can_assign_to(&key) {
-                            return Err(err(format!(
-                                "map index type mismatch: expected `{key:?}`, got `{index_ty:?}`"
-                            )));
-                        }
-                        Ok(*value)
-                    }
-                    _ => Err(err(format!(
-                        "indexing requires array or map, got `{base_ty:?}`"
-                    ))),
-                }
-            }
-            Expr::StructLit { name, fields } => {
-                let struct_decl = self
-                    .structs
-                    .get(name)
-                    .ok_or_else(|| err(format!("unknown struct `{name}` in struct literal")))?;
-                for struct_field in &struct_decl.fields {
-                    let init = fields
-                        .iter()
-                        .find(|(n, _)| n == &struct_field.name)
-                        .map(|(_, expr)| expr)
-                        .or(struct_field.init.as_ref());
-                    if let Some(expr) = init {
-                        let ty = self.infer_expr(env, expr, in_contract_method)?;
-                        if !ty.can_assign_to(&struct_field.ty) {
-                            return Err(err(format!(
-                                "field `{}` type mismatch: expected `{:?}`, got `{ty:?}`",
-                                struct_field.name, struct_field.ty
-                            )));
-                        }
-                    }
-                }
-                for (field_name, _) in fields {
-                    if !struct_decl.fields.iter().any(|f| f.name == *field_name) {
-                        return Err(err(format!("struct `{name}` has no field `{field_name}`")));
-                    }
-                }
-                Ok(Type::Named(name.clone()))
-            }
-            Expr::MapLit { ty, pairs } => {
-                check_map_key_rules_in_type(ty)?;
-                let Type::Map { key, value } = ty else {
-                    return Err(err("internal: MapLit without map type"));
-                };
-                let key_ty = *key.clone();
-                let value_ty = *value.clone();
-                for (key_expr, value_expr) in pairs {
-                    let kt = self.infer_expr(env, key_expr, in_contract_method)?;
-                    let vt = self.infer_expr(env, value_expr, in_contract_method)?;
-                    if !kt.can_assign_to(&key_ty) {
-                        return Err(err(format!(
-                            "map literal key type mismatch: expected `{key_ty:?}`, got `{kt:?}`"
-                        )));
-                    }
-                    if !vt.can_assign_to(&value_ty) {
-                        return Err(err(format!(
-                        "map literal value type mismatch: expected `{value_ty:?}`, got `{vt:?}`"
-                    )));
-                    }
-                }
-                Ok(ty.clone())
-            }
-            Expr::ArrayLit { ty, elements } => {
-                let Type::Array(elem) = ty else {
-                    return Err(err("internal: ArrayLit without array type"));
-                };
-                let elem_ty = *elem.clone();
-                for expr in elements {
-                    let ty = self.infer_expr(env, expr, in_contract_method)?;
-                    if !ty.can_assign_to(&elem_ty) {
-                        return Err(err(format!(
-                            "array element type mismatch: expected `{elem_ty:?}`, got `{ty:?}`"
-                        )));
-                    }
-                }
-                Ok(ty.clone())
-            }
-            Expr::Assign { target, op, value } => {
-                let value_ty = self.infer_expr(env, value, in_contract_method)?;
-                let target_ty = self.infer_lvalue_type(env, target, in_contract_method)?;
-                match op {
-                    AssignOp::Assign => {
-                        if !value_ty.can_assign_to(&target_ty) {
-                            return Err(err(format!(
-                            "assignment type mismatch: target `{target_ty:?}`, value `{value_ty:?}`"
-                        )));
-                        }
-                    }
-                    AssignOp::PlusAssign
-                    | AssignOp::MinusAssign
-                    | AssignOp::StarAssign
-                    | AssignOp::SlashAssign
-                    | AssignOp::PercentAssign
-                    | AssignOp::ShrAssign
-                    | AssignOp::ShlAssign
-                    | AssignOp::AmpAssign
-                    | AssignOp::PipeAssign
-                    | AssignOp::CaretAssign => {
-                        if target_ty != Type::Int || value_ty != Type::Int {
-                            return Err(err(format!(
-                            "compound assignment expects int target and int value, got `{target_ty:?}` and `{value_ty:?}`"
-                        )));
-                        }
-                    }
-                }
-                Ok(value_ty)
-            }
-            Expr::Call { callee, args } => self.check_call(env, callee, args, in_contract_method),
+            Expr::Index { base, index } => self.infer_expr_index(env, base, index),
+            Expr::StructLit { name, fields } => self.infer_expr_struct_lit(env, name, fields),
+            Expr::MapLit { ty, pairs } => self.infer_expr_map_lit(env, ty, pairs),
+            Expr::ArrayLit { ty, elements } => self.infer_expr_array_lit(env, ty, elements),
+            Expr::Assign { target, op, value } => self.infer_expr_assign(env, target, *op, value),
+            Expr::Call { callee, args } => self.check_call(env, callee, args),
         }
     }
 
-    fn contract_self_map_types(
+    fn infer_expr_unary_not(&self, ty: Type) -> Result<Type, TypeError> {
+        if ty != Type::Bool {
+            return Err(err(format!("`!` expects bool, got `{ty:?}`")));
+        }
+        Ok(Type::Bool)
+    }
+
+    fn infer_expr_unary_int(&self, ty: Type) -> Result<Type, TypeError> {
+        if ty != Type::Int {
+            return Err(err(format!("unary op expects int, got `{ty:?}`")));
+        }
+        Ok(Type::Int)
+    }
+
+    fn infer_expr_binary_logical(&self, lt: Type, rt: Type) -> Result<Type, TypeError> {
+        if lt != Type::Bool || rt != Type::Bool {
+            return Err(err(format!(
+                "logical op expects bool operands, got `{lt:?}` and `{rt:?}`"
+            )));
+        }
+        Ok(Type::Bool)
+    }
+
+    fn infer_expr_binary_compare(&self, lt: Type, rt: Type) -> Result<Type, TypeError> {
+        let ok = lt == rt && lt.is_primitive();
+        if !ok {
+            return Err(err(format!(
+                "comparison requires matching primitive types, got `{lt:?}` and `{rt:?}`"
+            )));
+        }
+        Ok(Type::Bool)
+    }
+
+    fn infer_expr_binary_add(&self, lt: Type, rt: Type) -> Result<Type, TypeError> {
+        if lt == Type::Int && rt == Type::Int {
+            Ok(Type::Int)
+        } else if lt == Type::String && rt == Type::String {
+            Ok(Type::String)
+        } else {
+            Err(err(format!(
+                "`+` expects int+int or string+string, got `{lt:?}` and `{rt:?}`"
+            )))
+        }
+    }
+
+    fn infer_expr_binary_arith(&self, lt: Type, rt: Type) -> Result<Type, TypeError> {
+        if lt != Type::Int || rt != Type::Int {
+            return Err(err(format!(
+                "arithmetic op expects int operands, got `{lt:?}` and `{rt:?}`"
+            )));
+        }
+        Ok(Type::Int)
+    }
+
+    fn infer_expr_member_ident(
         &self,
+        env: &FnEnv,
+        var: &str,
+        field: &str,
+    ) -> Result<Type, TypeError> {
+        let struct_name = env
+            .value_struct
+            .get(var)
+            .ok_or_else(|| err("member access needs a variable with struct type"))?;
+        let struct_decl = self
+            .structs
+            .get(struct_name)
+            .ok_or_else(|| err(format!("unknown struct type `{struct_name}`")))?;
+        let struct_field = struct_decl
+            .fields
+            .iter()
+            .find(|f| f.name == field)
+            .ok_or_else(|| err(format!("struct `{struct_name}` has no field `{field}`")))?;
+        Ok(struct_field.ty.clone())
+    }
+
+    fn infer_expr_member_self(&self, env: &FnEnv, field: &str) -> Result<Type, TypeError> {
+        if env.is_contract_fn {
+            if !self.contract_fields.is_empty() {
+                if let Some(cf) = self.contract_fields.iter().find(|f| f.name == field) {
+                    if cf.ty.is_map() {
+                        return Err(err(format!(
+                            "use `self.{field}[key]` for contract map fields (whole-field load is not supported)"
+                        )));
+                    }
+                    return Ok(cf.ty.clone());
+                }
+            }
+        }
+        let struct_name = env.value_struct.get("self").ok_or_else(|| {
+            err("`self.member` needs a contract field or struct `self` parameter")
+        })?;
+        let struct_decl = self
+            .structs
+            .get(struct_name)
+            .ok_or_else(|| err(format!("unknown struct type `{struct_name}`")))?;
+        let struct_field = struct_decl
+            .fields
+            .iter()
+            .find(|f| f.name == field)
+            .ok_or_else(|| err(format!("struct `{struct_name}` has no field `{field}`")))?;
+        Ok(struct_field.ty.clone())
+    }
+
+    fn infer_expr_index_array_elem(&self, index_ty: Type, elem: Type) -> Result<Type, TypeError> {
+        if index_ty != Type::Int {
+            return Err(err(format!("array index must be int, got `{index_ty:?}`")));
+        }
+        Ok(elem)
+    }
+
+    fn infer_expr_index_map_value(
+        &self,
+        index_ty: Type,
+        key: Type,
+        value: Type,
+    ) -> Result<Type, TypeError> {
+        if !index_ty.can_assign_to(&key) {
+            return Err(err(format!(
+                "map index type mismatch: expected `{key:?}`, got `{index_ty:?}`"
+            )));
+        }
+        Ok(value)
+    }
+
+    fn infer_expr_index(
+        &self,
+        env: &mut FnEnv,
         base: &Expr,
-        in_contract_method: bool,
-    ) -> Result<Option<(Type, Type)>, TypeError> {
+        index: &Expr,
+    ) -> Result<Type, TypeError> {
+        if env.is_contract_fn {
+            if let Some((key_ty, val_ty)) = self.try_contract_self_map_types(base)? {
+                let index_ty = self.infer_expr(env, index)?;
+                if !index_ty.can_assign_to(&key_ty) {
+                    return Err(err(format!(
+                        "map index type mismatch: expected `{key_ty:?}`, got `{index_ty:?}`"
+                    )));
+                }
+                return Ok(val_ty);
+            }
+        }
+        let base_ty = self.infer_expr(env, base)?;
+        let index_ty = self.infer_expr(env, index)?;
+        match base_ty {
+            Type::Array(elem) => self.infer_expr_index_array_elem(index_ty, *elem),
+            Type::Map { key, value } => self.infer_expr_index_map_value(index_ty, *key, *value),
+            _ => Err(err(format!(
+                "indexing requires array or map, got `{base_ty:?}`"
+            ))),
+        }
+    }
+
+    fn infer_expr_struct_lit(
+        &self,
+        env: &mut FnEnv,
+        name: &str,
+        fields: &[(String, Expr)],
+    ) -> Result<Type, TypeError> {
+        let struct_decl = self
+            .structs
+            .get(name)
+            .ok_or_else(|| err(format!("unknown struct `{name}` in struct literal")))?;
+        for struct_field in &struct_decl.fields {
+            let init = fields
+                .iter()
+                .find(|(n, _)| n == &struct_field.name)
+                .map(|(_, expr)| expr)
+                .or(struct_field.init.as_ref());
+            if let Some(expr) = init {
+                let ty = self.infer_expr(env, expr)?;
+                if !ty.can_assign_to(&struct_field.ty) {
+                    return Err(err(format!(
+                        "field `{}` type mismatch: expected `{:?}`, got `{ty:?}`",
+                        struct_field.name, struct_field.ty
+                    )));
+                }
+            }
+        }
+        for (field_name, _) in fields {
+            if !struct_decl.fields.iter().any(|f| f.name == *field_name) {
+                return Err(err(format!("struct `{name}` has no field `{field_name}`")));
+            }
+        }
+        Ok(Type::Named(name.to_string()))
+    }
+
+    fn infer_expr_map_lit(
+        &self,
+        env: &mut FnEnv,
+        ty: &Type,
+        pairs: &[(Expr, Expr)],
+    ) -> Result<Type, TypeError> {
+        check_map_key_rules_in_type(ty)?;
+        let Type::Map { key, value } = ty else {
+            return Err(err("internal: MapLit without map type"));
+        };
+        let key_ty = *key.clone();
+        let value_ty = *value.clone();
+        for (key_expr, value_expr) in pairs {
+            let kt = self.infer_expr(env, key_expr)?;
+            let vt = self.infer_expr(env, value_expr)?;
+            if !kt.can_assign_to(&key_ty) {
+                return Err(err(format!(
+                    "map literal key type mismatch: expected `{key_ty:?}`, got `{kt:?}`"
+                )));
+            }
+            if !vt.can_assign_to(&value_ty) {
+                return Err(err(format!(
+                    "map literal value type mismatch: expected `{value_ty:?}`, got `{vt:?}`"
+                )));
+            }
+        }
+        Ok(ty.clone())
+    }
+
+    fn infer_expr_array_lit(
+        &self,
+        env: &mut FnEnv,
+        ty: &Type,
+        elements: &[Expr],
+    ) -> Result<Type, TypeError> {
+        let Type::Array(elem) = ty else {
+            return Err(err("internal: ArrayLit without array type"));
+        };
+        let elem_ty = *elem.clone();
+        for expr in elements {
+            let ty = self.infer_expr(env, expr)?;
+            if !ty.can_assign_to(&elem_ty) {
+                return Err(err(format!(
+                    "array element type mismatch: expected `{elem_ty:?}`, got `{ty:?}`"
+                )));
+            }
+        }
+        Ok(ty.clone())
+    }
+
+    fn infer_expr_assign(
+        &self,
+        env: &mut FnEnv,
+        target: &Expr,
+        op: AssignOp,
+        value: &Expr,
+    ) -> Result<Type, TypeError> {
+        let value_ty = self.infer_expr(env, value)?;
+        let target_ty = self.infer_lvalue_type(env, target)?;
+        if matches!(op, AssignOp::Assign) {
+            if !value_ty.can_assign_to(&target_ty) {
+                return Err(err(format!(
+                    "assignment type mismatch: target `{target_ty:?}`, value `{value_ty:?}`"
+                )));
+            }
+        } else if target_ty != Type::Int || value_ty != Type::Int {
+            return Err(err(format!(
+                "compound assignment expects int target and int value, got `{target_ty:?}` and `{value_ty:?}`"
+            )));
+        }
+        Ok(value_ty)
+    }
+
+    fn try_contract_self_map_types(&self, base: &Expr) -> Result<Option<(Type, Type)>, TypeError> {
         let Expr::Member {
             base: inner,
             field: fname,
@@ -739,9 +778,6 @@ impl<'a> TypeCheckContext<'a> {
             return Ok(None);
         };
         if !matches!(inner.as_ref(), Expr::Self_) {
-            return Ok(None);
-        }
-        if !in_contract_method {
             return Ok(None);
         }
         if self.contract_fields.is_empty() {
@@ -760,12 +796,7 @@ impl<'a> TypeCheckContext<'a> {
         }
     }
 
-    fn infer_lvalue_type(
-        &self,
-        env: &mut FnEnv,
-        target: &Expr,
-        in_contract_method: bool,
-    ) -> Result<Type, TypeError> {
+    fn infer_lvalue_type(&self, env: &mut FnEnv, target: &Expr) -> Result<Type, TypeError> {
         match target {
             Expr::Ident(name) => env
                 .resolve(name)
@@ -789,7 +820,7 @@ impl<'a> TypeCheckContext<'a> {
                     Ok(struct_field.ty.clone())
                 }
                 Expr::Self_ => {
-                    if in_contract_method && !self.contract_fields.is_empty() {
+                    if env.is_contract_fn && !self.contract_fields.is_empty() {
                         if let Some(contract_field) =
                             self.contract_fields.iter().find(|f| f.name == *field)
                         {
@@ -822,19 +853,19 @@ impl<'a> TypeCheckContext<'a> {
                 )),
             },
             Expr::Index { base, index } => {
-                if let Some((key_ty, val_ty)) =
-                    self.contract_self_map_types(base.as_ref(), in_contract_method)?
-                {
-                    let index_ty = self.infer_expr(env, index, in_contract_method)?;
-                    if !index_ty.can_assign_to(&key_ty) {
-                        return Err(err(format!(
-                        "map index type mismatch in assignment: expected `{key_ty:?}`, got `{index_ty:?}`"
-                    )));
+                if env.is_contract_fn {
+                    if let Some((key_ty, val_ty)) =
+                        self.try_contract_self_map_types(base.as_ref())?
+                    {
+                        let index_ty = self.infer_expr(env, index)?;
+                        if !index_ty.can_assign_to(&key_ty) {
+                            return Err(err(format!("map index type mismatch: expected `{key_ty:?}`, got `{index_ty:?}`")));
+                        }
+                        return Ok(val_ty);
                     }
-                    return Ok(val_ty);
                 }
-                let base_ty = self.infer_expr(env, base, in_contract_method)?;
-                let index_ty = self.infer_expr(env, index, in_contract_method)?;
+                let base_ty = self.infer_expr(env, base)?;
+                let index_ty = self.infer_expr(env, index)?;
                 match base_ty {
                     Type::Array(elem) => {
                         if index_ty != Type::Int {
@@ -855,22 +886,14 @@ impl<'a> TypeCheckContext<'a> {
         }
     }
 
-    fn check_call(
-        &self,
-        env: &mut FnEnv,
-        callee: &Expr,
-        args: &[Expr],
-        in_contract_method: bool,
-    ) -> Result<Type, TypeError> {
+    fn check_call(&self, env: &mut FnEnv, callee: &Expr, args: &[Expr]) -> Result<Type, TypeError> {
         if let Expr::Member { base, field } = callee {
             if let Expr::Ident(pkg) = base.as_ref() {
                 if pkg == "runtime" {
-                    return self.check_runtime_call(field, args, env, in_contract_method);
+                    return self.check_runtime_call(field, args, env);
                 }
             }
-            if let Some(ty) =
-                self.check_builtin_method_call(env, base.as_ref(), field, args, in_contract_method)?
-            {
+            if let Some(ty) = self.check_builtin_method_call(env, base.as_ref(), field, args)? {
                 return Ok(ty);
             }
             if let Expr::Ident(recv) = base.as_ref() {
@@ -894,7 +917,7 @@ impl<'a> TypeCheckContext<'a> {
                         )));
                     }
                     for (expr, param) in args.iter().zip(&method.params) {
-                        let ty = self.infer_expr(env, expr, in_contract_method)?;
+                        let ty = self.infer_expr(env, expr)?;
                         if !ty.can_assign_to(&param.ty) {
                             return Err(err(format!(
                             "argument `{}` to `{struct_name}.{field}` type mismatch: expected `{:?}`, got `{ty:?}`",
@@ -908,7 +931,7 @@ impl<'a> TypeCheckContext<'a> {
         }
 
         if let Expr::Ident(name) = callee {
-            if let Some(ty) = self.check_builtin_call(env, name, args, in_contract_method)? {
+            if let Some(ty) = self.check_builtin_call(env, name, args)? {
                 return Ok(ty);
             }
             if let Some(fn_decl) = self.package_fns.get(name) {
@@ -920,7 +943,7 @@ impl<'a> TypeCheckContext<'a> {
                     )));
                 }
                 for (expr, param) in args.iter().zip(&fn_decl.params) {
-                    let ty = self.infer_expr(env, expr, in_contract_method)?;
+                    let ty = self.infer_expr(env, expr)?;
                     if !ty.can_assign_to(&param.ty) {
                         return Err(err(format!(
                         "argument `{}` to `{name}` type mismatch: expected `{:?}`, got `{ty:?}`",
@@ -932,9 +955,42 @@ impl<'a> TypeCheckContext<'a> {
             }
         }
 
-        Err(err(
-        "only package-level functions, built-in functions, struct methods, and runtime.* calls are supported",
-    ))
+        Err(err("only package-level functions, built-in functions, struct methods, and runtime.* calls are supported"))
+    }
+
+    /// `self.<map>.has` / `self.<map>.remove` on a contract storage `map` field; otherwise [`None`].
+    fn check_contract_storage_map_method(
+        &self,
+        key: &Type,
+        method: &str,
+        args: &[Expr],
+        env: &mut FnEnv,
+    ) -> Result<Option<Type>, TypeError> {
+        let err_method =
+            |msg: &str| -> TypeError { err(format!("built-in method `{method}`: {msg}")) };
+        match method {
+            "has" => {
+                if args.len() != 1 {
+                    return Err(err_method("expects 1 argument"));
+                }
+                let t0 = self.infer_expr(env, &args[0])?;
+                if !t0.can_assign_to(key) {
+                    return Err(err_method("type mismatch"));
+                }
+                Ok(Some(Type::Bool))
+            }
+            "remove" => {
+                if args.len() != 1 {
+                    return Err(err_method("expects 1 argument"));
+                }
+                let t0 = self.infer_expr(env, &args[0])?;
+                if !t0.can_assign_to(key) {
+                    return Err(err_method("type mismatch"));
+                }
+                Ok(Some(Type::Void))
+            }
+            _ => Err(err(format!("contract storage map does not support `{method}`(only `has`, `remove`, and index access)"))),
+        }
     }
 
     fn check_builtin_method_call(
@@ -943,14 +999,22 @@ impl<'a> TypeCheckContext<'a> {
         receiver: &Expr,
         method: &str,
         args: &[Expr],
-        in_contract_method: bool,
     ) -> Result<Option<Type>, TypeError> {
-        let recv_ty = self.infer_expr(env, receiver, in_contract_method)?;
+        if let Expr::Member { base, field } = receiver {
+            if matches!(base.as_ref(), Expr::Self_) && env.is_contract_fn {
+                let Some(cf) = self.contract_fields.iter().find(|f| f.name == *field) else {
+                    return Err(err(format!("contract doesn't have field `{field}`")));
+                };
+                if let Type::Map { key, .. } = &cf.ty {
+                    return self.check_contract_storage_map_method(&key, method, args, env);
+                }
+            }
+        };
+
+        let recv_ty = self.infer_expr(env, receiver)?;
         let err_method =
             |msg: &str| -> TypeError { err(format!("built-in method `{method}`: {msg}")) };
-
         match (&recv_ty, method) {
-            // string / bytestring-like
             (Type::String | Type::Hash160 | Type::Hash256, "size") => {
                 if !args.is_empty() {
                     return Err(err_method("expects 0 arguments"));
@@ -961,8 +1025,8 @@ impl<'a> TypeCheckContext<'a> {
                 if args.len() != 2 {
                     return Err(err_method("expects 2 arguments"));
                 }
-                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
-                let t1 = self.infer_expr(env, &args[1], in_contract_method)?;
+                let t0 = self.infer_expr(env, &args[0])?;
+                let t1 = self.infer_expr(env, &args[1])?;
                 if t0 != Type::Int || t1 != Type::Int {
                     return Err(err_method("expects (int, int)"));
                 }
@@ -978,8 +1042,8 @@ impl<'a> TypeCheckContext<'a> {
                 if args.len() != 2 {
                     return Err(err_method("expects 2 arguments"));
                 }
-                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
-                let t1 = self.infer_expr(env, &args[1], in_contract_method)?;
+                let t0 = self.infer_expr(env, &args[0])?;
+                let t1 = self.infer_expr(env, &args[1])?;
                 if t0 != Type::Int || t1 != Type::Int {
                     return Err(err_method("expects (int, int)"));
                 }
@@ -995,8 +1059,8 @@ impl<'a> TypeCheckContext<'a> {
                 if args.len() != 2 {
                     return Err(err_method("expects 2 arguments"));
                 }
-                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
-                let t1 = self.infer_expr(env, &args[1], in_contract_method)?;
+                let t0 = self.infer_expr(env, &args[0])?;
+                let t1 = self.infer_expr(env, &args[1])?;
                 if t0 != Type::Int || t1 != Type::Int {
                     return Err(err_method("expects (int, int)"));
                 }
@@ -1006,16 +1070,14 @@ impl<'a> TypeCheckContext<'a> {
                 if args.len() != 2 {
                     return Err(err_method("expects 2 arguments"));
                 }
-                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
-                let t1 = self.infer_expr(env, &args[1], in_contract_method)?;
+                let t0 = self.infer_expr(env, &args[0])?;
+                let t1 = self.infer_expr(env, &args[1])?;
                 if t0 != Type::Int || t1 != Type::Int {
                     return Err(err_method("expects (int, int)"));
                 }
                 // NeoVM `WITHIN` returns bool (x in [a, b)).
                 Ok(Some(Type::Bool))
             }
-
-            // array
             (Type::Array(_), "size") => {
                 if !args.is_empty() {
                     return Err(err_method("expects 0 arguments"));
@@ -1026,7 +1088,7 @@ impl<'a> TypeCheckContext<'a> {
                 if args.len() != 1 {
                     return Err(err_method("expects 1 argument"));
                 }
-                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
+                let t0 = self.infer_expr(env, &args[0])?;
                 if !t0.can_assign_to(elem.as_ref()) {
                     return Err(err_method("type mismatch"));
                 }
@@ -1066,7 +1128,7 @@ impl<'a> TypeCheckContext<'a> {
                 if args.len() != 1 {
                     return Err(err_method("expects 1 argument"));
                 }
-                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
+                let t0 = self.infer_expr(env, &args[0])?;
                 if !t0.can_assign_to(key.as_ref()) {
                     return Err(err_method("type mismatch"));
                 }
@@ -1082,7 +1144,7 @@ impl<'a> TypeCheckContext<'a> {
                 if args.len() != 1 {
                     return Err(err_method("expects 1 argument"));
                 }
-                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
+                let t0 = self.infer_expr(env, &args[0])?;
                 if !t0.can_assign_to(key.as_ref()) {
                     return Err(err_method("type mismatch"));
                 }
@@ -1097,15 +1159,14 @@ impl<'a> TypeCheckContext<'a> {
         env: &mut FnEnv,
         name: &str,
         args: &[Expr],
-        in_contract_method: bool,
     ) -> Result<Option<Type>, TypeError> {
         match name {
             "assert" => {
                 if args.len() != 2 {
                     return Err(err("`assert` expects 2 arguments"));
                 }
-                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
-                let t1 = self.infer_expr(env, &args[1], in_contract_method)?;
+                let t0 = self.infer_expr(env, &args[0])?;
+                let t1 = self.infer_expr(env, &args[1])?;
                 if t0 != Type::Bool {
                     return Err(err(format!(
                         "`assert` first argument must be bool, got `{t0:?}`"
@@ -1122,7 +1183,7 @@ impl<'a> TypeCheckContext<'a> {
                 if args.len() != 1 {
                     return Err(err("`abort` expects 1 argument"));
                 }
-                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
+                let t0 = self.infer_expr(env, &args[0])?;
                 if t0 != Type::String {
                     return Err(err(format!("`abort` expects string, got `{t0:?}`")));
                 }
@@ -1132,8 +1193,8 @@ impl<'a> TypeCheckContext<'a> {
                 if args.len() != 2 {
                     return Err(err("`min` or `max` expects 2 arguments"));
                 }
-                let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
-                let t1 = self.infer_expr(env, &args[1], in_contract_method)?;
+                let t0 = self.infer_expr(env, &args[0])?;
+                let t1 = self.infer_expr(env, &args[1])?;
                 if t0 != Type::Int || t1 != Type::Int {
                     return Err(err(format!(
                         "`{name}` expects two int arguments, got `{t0:?}` and `{t1:?}`"
@@ -1150,7 +1211,6 @@ impl<'a> TypeCheckContext<'a> {
         method: &str,
         args: &[Expr],
         env: &mut FnEnv,
-        in_contract_method: bool,
     ) -> Result<Type, TypeError> {
         if method == "contractCall" {
             if args.len() != 3 {
@@ -1159,9 +1219,9 @@ impl<'a> TypeCheckContext<'a> {
                     args.len()
                 )));
             }
-            let t0 = self.infer_expr(env, &args[0], in_contract_method)?;
-            let t1 = self.infer_expr(env, &args[1], in_contract_method)?;
-            let t2 = self.infer_expr(env, &args[2], in_contract_method)?;
+            let t0 = self.infer_expr(env, &args[0])?;
+            let t1 = self.infer_expr(env, &args[1])?;
+            let t2 = self.infer_expr(env, &args[2])?;
             let ok0 = matches!(t0, Type::Hash160 | Type::String | Type::Hash256);
             let ok1 = t1 == Type::String;
             let ok2 = matches!(t2, Type::Array(_) | Type::Any);
@@ -1186,67 +1246,13 @@ impl<'a> TypeCheckContext<'a> {
             )));
         }
         for (expr, (_, sit)) in args.iter().zip(syscall.args.iter()) {
-            let ty = self.infer_expr(env, expr, in_contract_method)?;
+            let ty = self.infer_expr(env, expr)?;
             if !satisfies_stack_item(&ty, *sit) {
                 return Err(err(format!(
-                "runtime.{method} argument type mismatch: expected stack item `{sit:?}`, got neo type `{ty:?}`"
-            )));
+                    "runtime.{method} argument type mismatch: expected `{sit:?}`, got `{ty:?}`"
+                )));
             }
         }
         Ok(syscall_return_type(syscall))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::syntax::parser::parse_source_file;
-
-    #[test]
-    fn rejects_package_call_when_arg_types_dont_match() {
-        let src = r#"
-            package demo;
-            int add(int a, int b) { return a + b; }
-            contract C {
-                void m() {
-                    var x = add("a", "b");
-                }
-            }
-        "#;
-        let ast = parse_source_file(src).expect("parse");
-        let err = ast.type_check().unwrap_err();
-        assert!(
-            err.to_string().contains("add") && err.to_string().contains("type mismatch"),
-            "{err}"
-        );
-    }
-
-    #[test]
-    fn accepts_matching_package_call() {
-        let src = r#"
-            package demo;
-            int add(int a, int b) { return a + b; }
-            contract C {
-                void m() {
-                    var x = add(1, 2);
-                }
-            }
-        "#;
-        let ast = parse_source_file(src).expect("parse");
-        ast.type_check().expect("typecheck");
-    }
-
-    #[test]
-    fn rejects_map_with_non_primitive_key_type() {
-        let src = r#"
-            package demo;
-            contract C {
-                void m() {
-                    var n = map[map[int, int], int] { map[int, int] { 1: 2 }: 5 };
-                }
-            }
-        "#;
-        let ast = parse_source_file(src).expect("parse");
-        let err = ast.type_check().unwrap_err();
-        assert!(err.to_string().contains("map key type must be"), "{err}");
     }
 }

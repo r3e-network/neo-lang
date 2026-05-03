@@ -63,9 +63,7 @@ impl<'a> Builder<'a> {
                     if let Some(cf) = self.contract_field_by_name(field) {
                         let ty = cf.ty.clone();
                         if ty.is_map() {
-                            return Err(err(format!(
-                                "use `self.{field}[key]` to read contract map `{field}` entries (whole-map load or map.size() is not supported)",
-                            )));
+                            return Err(err("only has, remove, and index access are supported for contract map fields"));
                         }
                         if ty.is_array() {
                             return Err(err("contract cannot have array fields"));

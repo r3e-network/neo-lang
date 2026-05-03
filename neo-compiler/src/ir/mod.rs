@@ -174,6 +174,18 @@ pub enum Instr {
         value: ValueRef,
         op: AssignOp,
     },
+    /// `self.map.has(key)` for a contract storage map (composite key exists in local storage).
+    ContractMapStorageHas {
+        field: String,
+        key_ty: Type,
+        key: ValueRef,
+    },
+    /// `self.map.remove(key)` for a contract storage map.
+    ContractMapStorageRemove {
+        field: String,
+        key_ty: Type,
+        key: ValueRef,
+    },
     /// `assert(cond, message)` (`ASSERTMSG`).
     Assert {
         cond: ValueRef,
@@ -255,6 +267,7 @@ impl Instr {
                 | Instr::ContractStoragePut { .. }
                 | Instr::ContractMapStoragePut { .. }
                 | Instr::ContractMapStorageCompound { .. }
+                | Instr::ContractMapStorageRemove { .. }
                 | Instr::Assert { .. }
                 | Instr::Abort { .. }
                 | Instr::Emit { .. }
@@ -285,6 +298,7 @@ impl Instr {
                 | Instr::ContractStoragePut { .. }
                 | Instr::ContractMapStoragePut { .. }
                 | Instr::ContractMapStorageCompound { .. }
+                | Instr::ContractMapStorageRemove { .. }
                 | Instr::Assert { .. }
                 | Instr::Abort { .. }
                 | Instr::Emit { .. }

@@ -56,6 +56,56 @@ impl<'a> Builder<'a> {
         }
     }
 
+    /// `self.<map>.has` / `self.<map>.remove` lowered to storage IR; [`None`] if `base` is not a contract map field.
+    fn try_lower_contract_map_storage_method(
+        &mut self,
+        base: &Expr,
+        field: &str,
+        args: &[Expr],
+        env: &mut Env,
+    ) -> Result<Option<ValueRef>, LowerError> {
+        let Some((map_name, key_ty, _val_ty)) = self.contract_self_map_types(base) else {
+            return Ok(None);
+        };
+        match field {
+            "has" => {
+                if args.len() != 1 {
+                    return Err(err("`has` expects 1 argument"));
+                }
+                let key = self.lower_expr(&args[0], env)?;
+                let out = self.new_value();
+                self.emit(
+                    out,
+                    Instr::ContractMapStorageHas {
+                        field: map_name,
+                        key_ty,
+                        key,
+                    },
+                );
+                Ok(Some(ValueRef::Value(out)))
+            }
+            "remove" => {
+                if args.len() != 1 {
+                    return Err(err("`remove` expects 1 argument"));
+                }
+                let key = self.lower_expr(&args[0], env)?;
+                let out = self.new_value();
+                self.emit(
+                    out,
+                    Instr::ContractMapStorageRemove {
+                        field: map_name,
+                        key_ty,
+                        key,
+                    },
+                );
+                Ok(Some(ValueRef::Value(out)))
+            }
+            _ => Err(err(format!(
+                "contract storage map does not support `{field}`; use `has`, `remove`, or `self.<map>[key]`"
+            ))),
+        }
+    }
+
     pub(crate) fn lower_builtin_method_call(
         &mut self,
         base: &Expr,
@@ -63,6 +113,9 @@ impl<'a> Builder<'a> {
         args: &[Expr],
         env: &mut Env,
     ) -> Result<Option<ValueRef>, LowerError> {
+        if let Some(v) = self.try_lower_contract_map_storage_method(base, field, args, env)? {
+            return Ok(Some(v));
+        }
         match field {
             "size" => {
                 if !args.is_empty() {

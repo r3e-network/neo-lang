@@ -56,7 +56,6 @@ pub mod expr;
 pub mod function;
 pub mod ir_codegen;
 pub mod opt;
-pub mod typecheck;
 
 use std::collections::HashMap;
 
@@ -65,6 +64,7 @@ use crate::codegen::opt::Optimizer;
 use crate::syntax::ast::*;
 use crate::target::opcode::OpCode;
 use crate::target::Instruction;
+use crate::typecheck;
 
 /// One compiled NeoVM routine for a neo-lang function.
 #[derive(Debug, Clone, PartialEq, Eq)]

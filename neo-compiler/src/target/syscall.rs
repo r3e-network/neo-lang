@@ -94,7 +94,7 @@ impl Syscall {
     pub const CONTRACT_CREATE_STANDARD_ACCOUNT: Syscall = Syscall {
         name: "System.Contract.CreateStandardAccount",
         args: &[("pubKey", StackItemType::ByteString)], // Public key, 33(or 65) bytes string
-        return_type: Some(StackItemType::ByteString),         // Hash160, 20 bytes string
+        return_type: Some(StackItemType::ByteString),   // Hash160, 20 bytes string
         callflags: CallFlags::None as u8,
     };
 
@@ -321,8 +321,6 @@ impl Syscall {
         callflags: CallFlags::WriteStates as u8,
     };
 
-    // --- System.Storage.Local.*  ---
-
     /// Scan storage entries with a prefix. Options is a bitmask of FindOptions.
     pub const STORAGE_FIND: Syscall = Syscall {
         name: "System.Storage.Find",
@@ -330,9 +328,11 @@ impl Syscall {
             ("prefix", StackItemType::ByteString),
             ("options", StackItemType::Integer),
         ],
-        return_type: Some(StackItemType::Array),
+        return_type: Some(StackItemType::Any), // A iterator of (key, value)
         callflags: CallFlags::ReadStates as u8,
     };
+
+    // --- System.Storage.Local.*  ---
 
     pub const STORAGE_LOCAL_PUT: Syscall = Syscall {
         name: "System.Storage.Local.Put",
@@ -365,7 +365,7 @@ impl Syscall {
             ("prefix", StackItemType::ByteString),
             ("options", StackItemType::Integer),
         ],
-        return_type: Some(StackItemType::Array),
+        return_type: Some(StackItemType::Any), // A iterator of (key, value)
         callflags: CallFlags::ReadStates as u8,
     };
 }

@@ -256,7 +256,7 @@ The default value of the type is:
 - `hash256`: all zeros
 - `map`: empty map
 
-NOTE: `contract` cannot have array properties.
+NOTE: `contract` cannot have array properties, and only partial map methods are supported.
 
 Example:
 ```
@@ -419,6 +419,7 @@ It contains the following functions:
   - `bool map.has(key)`: return true if the key exists in the map;
   - `void map.clear()`: clear the map;
   - `void map.remove(key)`: remove the key from the map;
+  - contract persistent property map only supports `has`, `remove`, and index access methods.
 
 ## Native Contracts
 - `ContractManagement`: 

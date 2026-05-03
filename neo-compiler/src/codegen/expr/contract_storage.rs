@@ -11,9 +11,9 @@ impl ExprGen<'_, '_> {
         let contract_field = self.contract_field_required(field)?;
         let ty = contract_field.ty.clone();
         if ty.is_map() {
-            return Err(CodegenError::Unsupported(format!(
-                "use `self.{field}[key]` to read contract map `{field}` entries (whole-map load or map.size() is not supported)"
-            )));
+            return Err(CodegenError::Unsupported(
+                "only has, remove, and index access are supported for contract map fields".into(),
+            ));
         }
         if ty.is_array() {
             return Err(CodegenError::Unsupported(
@@ -54,20 +54,22 @@ impl ExprGen<'_, '_> {
         &mut self,
         ty: &Type,
     ) -> Result<(), CodegenError> {
-        let op = match ty {
-            Type::Bool | Type::Int => StackItemType::Buffer as u8,
-            Type::String | Type::Hash160 | Type::Hash256 | Type::Buffer => {
-                StackItemType::Buffer as u8
-            }
-            _ => {
-                return Err(CodegenError::Unsupported(format!(
-                    "storage put for type `{ty:?}` is not implemented yet"
-                )));
-            }
-        };
-        self.builder
-            .emit_with_operands(OpCode::CONVERT, std::slice::from_ref(&op));
-        Ok(())
+        if matches!(ty, Type::Buffer) {
+            return Ok(());
+        }
+
+        if ty.is_primitive() {
+            self.builder.emit_with_operands(
+                OpCode::CONVERT,
+                std::slice::from_ref(&(StackItemType::Buffer as u8)),
+            );
+            return Ok(());
+        }
+
+        // TODO: use StdLib.Serialize to serialize the compound type to buffer.
+        return Err(CodegenError::Unsupported(format!(
+            "storage put for type `{ty:?}` is not implemented yet"
+        )));
     }
 
     pub(super) fn emit_map_key_as_bytestring(&mut self, key_ty: &Type) -> Result<(), CodegenError> {
@@ -82,6 +84,59 @@ impl ExprGen<'_, '_> {
                 "map storage key type `{key_ty:?}` is not supported yet"
             ))),
         }
+    }
+
+    /// `Some((field_name, key_ty, val_ty))` when `receiver` is `self.<field>` for a contract `map` field.
+    pub(super) fn contract_storage_map_receiver(
+        &self,
+        receiver: &Expr,
+    ) -> Option<(String, Type, Type)> {
+        let Expr::Member {
+            base: inner,
+            field: fname,
+        } = receiver
+        else {
+            return None;
+        };
+        if !matches!(inner.as_ref(), Expr::Self_) {
+            return None;
+        }
+        let fields = self.contract_fields.as_ref()?;
+        let cf = fields.iter().find(|f| f.name == *fname)?;
+        let Type::Map { key, value } = &cf.ty else {
+            return None;
+        };
+        Some((
+            cf.name.clone(),
+            (*key.as_ref()).clone(),
+            (*value.as_ref()).clone(),
+        ))
+    }
+
+    /// `self.map.has(key)` using composite storage key: `Get` then non-null check.
+    pub(super) fn emit_contract_map_has(
+        &mut self,
+        field_name: &str,
+        key_ty: &Type,
+        key_expr: &Expr,
+    ) -> Result<(), CodegenError> {
+        self.emit_contract_map_key_on_stack(field_name, key_ty, key_expr)?;
+        self.builder.emit_syscall(Syscall::STORAGE_LOCAL_GET);
+        self.builder.emit(OpCode::ISNULL);
+        self.builder.emit(OpCode::NOT);
+        Ok(())
+    }
+
+    /// `self.map.remove(key)` using `System.Storage.Local.Delete` on the composite key.
+    pub(super) fn emit_contract_map_delete(
+        &mut self,
+        field_name: &str,
+        key_ty: &Type,
+        key_expr: &Expr,
+    ) -> Result<(), CodegenError> {
+        self.emit_contract_map_key_on_stack(field_name, key_ty, key_expr)?;
+        self.builder.emit_syscall(Syscall::STORAGE_LOCAL_DELETE);
+        Ok(())
     }
 
     /// Stack: … → …, composite_key (ByteString), where key = `{field_name}\0` ‖ key_bytes.

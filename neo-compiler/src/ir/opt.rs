@@ -536,6 +536,16 @@ fn collect_uses_in_instr(instr: &Instr, out: &mut VecDeque<ValueId>) {
                 out.push_back(*x);
             }
         }
+        Instr::ContractMapStorageHas { key, .. } => {
+            if let ValueRef::Value(x) = key {
+                out.push_back(*x);
+            }
+        }
+        Instr::ContractMapStorageRemove { key, .. } => {
+            if let ValueRef::Value(x) = key {
+                out.push_back(*x);
+            }
+        }
         Instr::ContractMapStoragePut { key, value, .. } => {
             if let ValueRef::Value(x) = key {
                 out.push_back(*x);
@@ -764,6 +774,12 @@ fn rewrite_value_refs_in_instr(instr: &mut Instr, subst: &HashMap<ValueId, Value
             *value = rewrite(*value, subst);
         }
         Instr::ContractMapStorageGet { key, .. } => {
+            *key = rewrite(*key, subst);
+        }
+        Instr::ContractMapStorageHas { key, .. } => {
+            *key = rewrite(*key, subst);
+        }
+        Instr::ContractMapStorageRemove { key, .. } => {
             *key = rewrite(*key, subst);
         }
         Instr::ContractMapStoragePut { key, value, .. } => {

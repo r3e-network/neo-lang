@@ -315,94 +315,8 @@ impl<'a> Builder<'a> {
                     env.set(name, ValueRef::Value(out));
                     Ok(ValueRef::Value(out))
                 }
-                Expr::Member { base, field } => {
-                    if matches!(base.as_ref(), Expr::Self_) {
-                        if let Some(cf) = self.contract_field_by_name(field) {
-                            let ty = cf.ty.clone();
-                            if ty.is_map() {
-                                return Err(err(
-                                    "cannot assign to a contract map field without `[key]`",
-                                ));
-                            }
-                            let rhs = self.lower_expr(value, env)?;
-                            let _sid = self.new_value();
-                            self.emit(
-                                _sid,
-                                Instr::ContractStoragePut {
-                                    field: field.clone(),
-                                    value_ty: ty,
-                                    value: rhs,
-                                },
-                            );
-                            return Ok(rhs);
-                        }
-                    }
-                    let rhs = self.lower_expr(value, env)?;
-                    let (base_ref, base_name) = match base.as_ref() {
-                        Expr::Ident(name) => (
-                            env.get(name)
-                                .ok_or_else(|| err(format!("undefined variable `{name}`")))?,
-                            name.as_str(),
-                        ),
-                        Expr::Self_ => (
-                            env.get("self")
-                                .ok_or_else(|| err("`self` is not in scope"))?,
-                            "self",
-                        ),
-                        _ => {
-                            return Err(err(
-                                "IR lowering: assignment member base must be identifier or self",
-                            ));
-                        }
-                    };
-                    let struct_name = env.get_struct_var(base_name).ok_or_else(|| {
-                        err("IR lowering: member assign needs a struct-typed variable")
-                    })?;
-                    let index = field_index_of(self.structs, struct_name, field)?;
-                    let out = self.new_value();
-                    self.emit(
-                        out,
-                        Instr::StructFieldSet {
-                            base: base_ref,
-                            index,
-                            value: rhs,
-                        },
-                    );
-                    Ok(ValueRef::Value(out))
-                }
-                Expr::Index { base, index } => {
-                    if let Some((map_name, key_ty, val_ty)) =
-                        self.contract_self_map_types(base.as_ref())
-                    {
-                        let key = self.lower_expr(index, env)?;
-                        let value = self.lower_expr(value, env)?;
-                        let _sid = self.new_value();
-                        self.emit(
-                            _sid,
-                            Instr::ContractMapStoragePut {
-                                field: map_name,
-                                key_ty,
-                                val_ty,
-                                key,
-                                value,
-                            },
-                        );
-                        return Ok(value);
-                    }
-                    let base_value = self.lower_expr(base, env)?;
-                    let index_value = self.lower_expr(index, env)?;
-                    let value = self.lower_expr(value, env)?;
-                    let out = self.new_value();
-                    self.emit(
-                        out,
-                        Instr::IndexSet {
-                            base: base_value,
-                            index: index_value,
-                            value,
-                        },
-                    );
-                    Ok(ValueRef::Value(out))
-                }
+                Expr::Member { base, field } => self.lower_member_assign(base, field, value, env),
+                Expr::Index { base, index } => self.lower_index_assign(base, index, value, env),
                 _ => Err(err("IR lowering: assignment target not supported")),
             },
             _ => {
@@ -410,177 +324,307 @@ impl<'a> Builder<'a> {
                     .to_binary_op()
                     .ok_or_else(|| err("IR lowering: bad assign op"))?;
 
-                if let Expr::Ident(name) = target {
-                    let current_value = env
-                        .get(name)
-                        .ok_or_else(|| err(format!("undefined variable `{name}`")))?;
-                    let rhs = self.lower_expr(value, env)?;
-                    let new_value_out = self.new_value();
-                    self.emit(
-                        new_value_out,
-                        Instr::Binary {
-                            op: bin_op,
-                            left: current_value,
-                            right: rhs,
-                        },
-                    );
-                    let out = self.new_value();
-                    self.emit(out, Instr::Copy(ValueRef::Value(new_value_out)));
-                    env.set(name, ValueRef::Value(out));
-                    return Ok(ValueRef::Value(out));
-                }
-
-                if let Expr::Index { base, index } = target {
-                    if let Some((map_name, key_ty, val_ty)) =
-                        self.contract_self_map_types(base.as_ref())
-                    {
-                        let key = self.lower_expr(index, env)?;
-                        let value = self.lower_expr(value, env)?;
-                        let out = self.new_value();
-                        self.emit(
-                            out,
-                            Instr::ContractMapStorageCompound {
-                                field: map_name,
-                                key_ty,
-                                val_ty,
-                                key,
-                                value,
-                                op,
-                            },
-                        );
-                        return Ok(ValueRef::Value(out));
+                match target {
+                    Expr::Ident(name) => self.lower_compound_assign_ident(name, bin_op, value, env),
+                    Expr::Index { base, index } => {
+                        self.lower_compound_assign_index(base, index, op, value, env)
                     }
-
-                    let base_value = self.lower_expr(base, env)?;
-                    let index_value = self.lower_expr(index, env)?;
-                    let current_value_out = self.new_value();
-                    self.emit(
-                        current_value_out,
-                        Instr::IndexGet {
-                            base: base_value,
-                            index: index_value,
-                        },
-                    );
-                    let rhs = self.lower_expr(value, env)?;
-                    let new_value_out = self.new_value();
-                    self.emit(
-                        new_value_out,
-                        Instr::Binary {
-                            op: bin_op,
-                            left: ValueRef::Value(current_value_out),
-                            right: rhs,
-                        },
-                    );
-                    let out = self.new_value();
-                    self.emit(
-                        out,
-                        Instr::IndexSet {
-                            base: base_value,
-                            index: index_value,
-                            value: ValueRef::Value(new_value_out),
-                        },
-                    );
-                    return Ok(ValueRef::Value(out));
-                }
-
-                if let Expr::Member { base, field } = target {
-                    if matches!(base.as_ref(), Expr::Self_) {
-                        if let Some(cf) = self.contract_field_by_name(field) {
-                            let ty = cf.ty.clone();
-                            if ty.is_map() {
-                                return Err(err(
-                                    "compound assignment for contract map field needs `[key]`",
-                                ));
-                            }
-                            if ty.is_array() {
-                                return Err(err("contract cannot have array fields"));
-                            }
-                            let current_value = self.new_value();
-                            self.emit(
-                                current_value,
-                                Instr::ContractStorageGet {
-                                    field: field.clone(),
-                                    value_ty: ty.clone(),
-                                },
-                            );
-                            let rhs = self.lower_expr(value, env)?;
-                            let new_value = self.new_value();
-                            self.emit(
-                                new_value,
-                                Instr::Binary {
-                                    op: bin_op,
-                                    left: ValueRef::Value(current_value),
-                                    right: rhs,
-                                },
-                            );
-                            let _sid = self.new_value();
-                            self.emit(
-                                _sid,
-                                Instr::ContractStoragePut {
-                                    field: field.clone(),
-                                    value_ty: ty,
-                                    value: ValueRef::Value(new_value),
-                                },
-                            );
-                            return Ok(ValueRef::Value(new_value));
-                        }
+                    Expr::Member { base, field } => {
+                        self.lower_compound_assign_member(base, field, op, value, env)
                     }
-
-                    let (base_ref, base_name) = match base.as_ref() {
-                        Expr::Ident(name) => (
-                            env.get(name)
-                                .ok_or_else(|| err(format!("undefined variable `{name}`")))?,
-                            name.as_str(),
-                        ),
-                        Expr::Self_ => (
-                            env.get("self")
-                                .ok_or_else(|| err("`self` is not in scope"))?,
-                            "self",
-                        ),
-                        _ => {
-                            return Err(err(
-                                "IR lowering: compound member base must be identifier or self",
-                            ));
-                        }
-                    };
-                    let struct_name = env.get_struct_var(base_name).ok_or_else(|| {
-                        err("IR lowering: compound member assign needs a struct-typed variable")
-                    })?;
-                    let field_index = field_index_of(self.structs, struct_name, field)?;
-
-                    let current_value_out = self.new_value();
-                    self.emit(
-                        current_value_out,
-                        Instr::StructFieldGet {
-                            base: base_ref,
-                            index: field_index,
-                        },
-                    );
-                    let rhs = self.lower_expr(value, env)?;
-                    let new_value_out = self.new_value();
-                    self.emit(
-                        new_value_out,
-                        Instr::Binary {
-                            op: bin_op,
-                            left: ValueRef::Value(current_value_out),
-                            right: rhs,
-                        },
-                    );
-                    let out = self.new_value();
-                    self.emit(
-                        out,
-                        Instr::StructFieldSet {
-                            base: base_ref,
-                            index: field_index,
-                            value: ValueRef::Value(new_value_out),
-                        },
-                    );
-                    return Ok(ValueRef::Value(out));
+                    _ => Err(err("IR lowering: compound assignment target not supported")),
                 }
-
-                Err(err("IR lowering: compound assignment not supported"))
             }
         }
+    }
+
+    fn lower_member_assign(
+        &mut self,
+        base: &Expr,
+        field: &str,
+        value: &Expr,
+        env: &mut Env,
+    ) -> Result<ValueRef, LowerError> {
+        if matches!(base, Expr::Self_) {
+            if let Some(cf) = self.contract_field_by_name(field) {
+                let ty = cf.ty.clone();
+                if ty.is_map() {
+                    return Err(err("cannot assign to a contract map field without `[key]`"));
+                }
+                let rhs = self.lower_expr(value, env)?;
+                let _sid = self.new_value();
+                self.emit(
+                    _sid,
+                    Instr::ContractStoragePut {
+                        field: field.into(),
+                        value_ty: ty,
+                        value: rhs,
+                    },
+                );
+                return Ok(rhs);
+            }
+        }
+        let rhs = self.lower_expr(value, env)?;
+        let (base_ref, base_name) = match base {
+            Expr::Ident(name) => (
+                env.get(name)
+                    .ok_or_else(|| err(format!("undefined variable `{name}`")))?,
+                name.as_str(),
+            ),
+            Expr::Self_ => (
+                env.get("self")
+                    .ok_or_else(|| err("`self` is not in scope"))?,
+                "self",
+            ),
+            _ => {
+                return Err(err(
+                    "IR lowering: assignment member base must be identifier or self",
+                ));
+            }
+        };
+        let struct_name = env
+            .get_struct_var(base_name)
+            .ok_or_else(|| err("IR lowering: member assign needs a struct-typed variable"))?;
+        let index = field_index_of(self.structs, struct_name, field)?;
+        let out = self.new_value();
+        self.emit(
+            out,
+            Instr::StructFieldSet {
+                base: base_ref,
+                index,
+                value: rhs,
+            },
+        );
+        Ok(ValueRef::Value(out))
+    }
+
+    fn lower_index_assign(
+        &mut self,
+        base: &Expr,
+        index: &Expr,
+        value: &Expr,
+        env: &mut Env,
+    ) -> Result<ValueRef, LowerError> {
+        if let Some((map_name, key_ty, val_ty)) = self.contract_self_map_types(base) {
+            let key = self.lower_expr(index, env)?;
+            let value = self.lower_expr(value, env)?;
+            let _sid = self.new_value();
+            self.emit(
+                _sid,
+                Instr::ContractMapStoragePut {
+                    field: map_name,
+                    key_ty,
+                    val_ty,
+                    key,
+                    value,
+                },
+            );
+            return Ok(value);
+        }
+        let base_value = self.lower_expr(base, env)?;
+        let index_value = self.lower_expr(index, env)?;
+        let value = self.lower_expr(value, env)?;
+        let out = self.new_value();
+        self.emit(
+            out,
+            Instr::IndexSet {
+                base: base_value,
+                index: index_value,
+                value,
+            },
+        );
+        Ok(ValueRef::Value(out))
+    }
+
+    fn lower_compound_assign_ident(
+        &mut self,
+        name: &str,
+        op: BinaryOp,
+        value: &Expr,
+        env: &mut Env,
+    ) -> Result<ValueRef, LowerError> {
+        let current_value = env
+            .get(name)
+            .ok_or_else(|| err(format!("undefined variable `{name}`")))?;
+        let rhs = self.lower_expr(value, env)?;
+        let new_value_out = self.new_value();
+        self.emit(
+            new_value_out,
+            Instr::Binary {
+                op,
+                left: current_value,
+                right: rhs,
+            },
+        );
+        let out = self.new_value();
+        self.emit(out, Instr::Copy(ValueRef::Value(new_value_out)));
+        env.set(name, ValueRef::Value(out));
+        return Ok(ValueRef::Value(out));
+    }
+
+    fn lower_compound_assign_index(
+        &mut self,
+        base: &Expr,
+        index: &Expr,
+        op: AssignOp,
+        value: &Expr,
+        env: &mut Env,
+    ) -> Result<ValueRef, LowerError> {
+        if let Some((map_name, key_ty, val_ty)) = self.contract_self_map_types(base) {
+            let key = self.lower_expr(index, env)?;
+            let value = self.lower_expr(value, env)?;
+            let out = self.new_value();
+            self.emit(
+                out,
+                Instr::ContractMapStorageCompound {
+                    field: map_name,
+                    key_ty,
+                    val_ty,
+                    key,
+                    value,
+                    op,
+                },
+            );
+            return Ok(ValueRef::Value(out));
+        }
+
+        let base_value = self.lower_expr(base, env)?;
+        let index_value = self.lower_expr(index, env)?;
+        let current_value_out = self.new_value();
+        self.emit(
+            current_value_out,
+            Instr::IndexGet {
+                base: base_value,
+                index: index_value,
+            },
+        );
+        let rhs = self.lower_expr(value, env)?;
+        let new_value_out = self.new_value();
+        self.emit(
+            new_value_out,
+            Instr::Binary {
+                op: op
+                    .to_binary_op()
+                    .ok_or_else(|| err("IR lowering: bad compound-assign op"))?,
+                left: ValueRef::Value(current_value_out),
+                right: rhs,
+            },
+        );
+        let out = self.new_value();
+        self.emit(
+            out,
+            Instr::IndexSet {
+                base: base_value,
+                index: index_value,
+                value: ValueRef::Value(new_value_out),
+            },
+        );
+        return Ok(ValueRef::Value(out));
+    }
+
+    fn lower_compound_assign_member(
+        &mut self,
+        base: &Expr,
+        field: &str,
+        op: AssignOp,
+        value: &Expr,
+        env: &mut Env,
+    ) -> Result<ValueRef, LowerError> {
+        let bin_op = op
+            .to_binary_op()
+            .ok_or_else(|| err("IR lowering: bad compound-assign op"))?;
+        if matches!(base, Expr::Self_) {
+            if let Some(cf) = self.contract_field_by_name(field) {
+                let ty = cf.ty.clone();
+                if ty.is_map() {
+                    return Err(err(
+                        "compound assignment for contract map field needs `[key]`",
+                    ));
+                }
+                if ty.is_array() {
+                    return Err(err("contract cannot have array fields"));
+                }
+                let current_value = self.new_value();
+                self.emit(
+                    current_value,
+                    Instr::ContractStorageGet {
+                        field: field.into(),
+                        value_ty: ty.clone(),
+                    },
+                );
+                let rhs = self.lower_expr(value, env)?;
+                let new_value = self.new_value();
+                self.emit(
+                    new_value,
+                    Instr::Binary {
+                        op: bin_op,
+                        left: ValueRef::Value(current_value),
+                        right: rhs,
+                    },
+                );
+                let _sid = self.new_value();
+                self.emit(
+                    _sid,
+                    Instr::ContractStoragePut {
+                        field: field.into(),
+                        value_ty: ty,
+                        value: ValueRef::Value(new_value),
+                    },
+                );
+                return Ok(ValueRef::Value(new_value));
+            }
+        }
+
+        let (base_ref, base_name) = match base {
+            Expr::Ident(name) => (
+                env.get(name)
+                    .ok_or_else(|| err(format!("undefined variable `{name}`")))?,
+                name.as_str(),
+            ),
+            Expr::Self_ => (
+                env.get("self")
+                    .ok_or_else(|| err("`self` is not in scope"))?,
+                "self",
+            ),
+            _ => {
+                return Err(err(
+                    "IR lowering: compound member base must be identifier or self",
+                ));
+            }
+        };
+        let struct_name = env.get_struct_var(base_name).ok_or_else(|| {
+            err("IR lowering: compound member assign needs a struct-typed variable")
+        })?;
+        let field_index = field_index_of(self.structs, struct_name, field)?;
+
+        let current_value_out = self.new_value();
+        self.emit(
+            current_value_out,
+            Instr::StructFieldGet {
+                base: base_ref,
+                index: field_index,
+            },
+        );
+        let rhs = self.lower_expr(value, env)?;
+        let new_value_out = self.new_value();
+        self.emit(
+            new_value_out,
+            Instr::Binary {
+                op: bin_op,
+                left: ValueRef::Value(current_value_out),
+                right: rhs,
+            },
+        );
+        let out = self.new_value();
+        self.emit(
+            out,
+            Instr::StructFieldSet {
+                base: base_ref,
+                index: field_index,
+                value: ValueRef::Value(new_value_out),
+            },
+        );
+        return Ok(ValueRef::Value(out));
     }
 
     pub fn lower_call(

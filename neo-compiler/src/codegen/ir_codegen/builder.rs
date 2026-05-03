@@ -291,6 +291,24 @@ impl Builder {
                 self.emit_convert_buffer_on_stack_to_type(val_ty)?;
                 Ok(())
             }
+            Instr::ContractMapStorageHas {
+                field,
+                key_ty,
+                key,
+            } => {
+                self.emit_contract_map_composite_key(
+                    ctx,
+                    emitted_spills,
+                    cur_bb,
+                    field,
+                    key_ty,
+                    *key,
+                )?;
+                self.emit_syscall(Syscall::STORAGE_LOCAL_GET);
+                self.emit(OpCode::ISNULL);
+                self.emit(OpCode::NOT);
+                Ok(())
+            }
             // Contract storage arrays are not supported.
             Instr::StructPack { field_values, .. } => {
                 for vr in field_values {
@@ -769,6 +787,29 @@ impl Builder {
                         .ok_or(CodegenError::LocalLimitExceeded)?;
                     self.emit_stloc(slot);
                     emitted_spills.insert(out);
+                }
+                Ok(())
+            }
+            Instr::ContractMapStorageRemove { field, key_ty, key } => {
+                self.emit_contract_map_composite_key(
+                    ctx,
+                    emitted_spills,
+                    cur_bb,
+                    field,
+                    key_ty,
+                    *key,
+                )?;
+                self.emit_syscall(Syscall::STORAGE_LOCAL_DELETE);
+                let out_uses = uses.get(&out).copied().unwrap_or(0);
+                if out_uses > 0 {
+                    self.push_null();
+                    if spill.contains(&out) {
+                        let slot = *value_slot
+                            .get(&out)
+                            .ok_or(CodegenError::LocalLimitExceeded)?;
+                        self.emit_stloc(slot);
+                        emitted_spills.insert(out);
+                    }
                 }
                 Ok(())
             }
