@@ -5,7 +5,11 @@ use crate::target::opcode::OpCode;
 use super::ExprGen;
 
 impl ExprGen<'_, '_> {
-    pub(super) fn emit_member_access(&mut self, base: &Expr, field: &str) -> Result<(), CodegenError> {
+    pub(super) fn emit_member_access(
+        &mut self,
+        base: &Expr,
+        field: &str,
+    ) -> Result<(), CodegenError> {
         match base {
             Expr::Ident(var) => {
                 let struct_name = self
@@ -59,7 +63,9 @@ impl ExprGen<'_, '_> {
             .structs
             .iter()
             .find(|s| s.name == *name)
-            .ok_or_else(|| CodegenError::Unsupported(format!("unknown struct `{name}` in literal")))?;
+            .ok_or_else(|| {
+                CodegenError::Unsupported(format!("unknown struct `{name}` in literal"))
+            })?;
         for field in &struct_decl.fields {
             let init = fields
                 .iter()
@@ -82,7 +88,11 @@ impl ExprGen<'_, '_> {
         Ok(())
     }
 
-    pub(super) fn emit_index_access(&mut self, base: &Expr, index: &Expr) -> Result<(), CodegenError> {
+    pub(super) fn emit_index_access(
+        &mut self,
+        base: &Expr,
+        index: &Expr,
+    ) -> Result<(), CodegenError> {
         if let Some((map_name, key_ty, val_ty)) = self.contract_self_map_field_types(base)? {
             self.emit_contract_map_get(&map_name, &key_ty, &val_ty, index)?;
             return Ok(());
@@ -122,24 +132,34 @@ impl ExprGen<'_, '_> {
         Ok(())
     }
 
-    pub(super) fn field_index_of(&self, struct_name: &str, field: &str) -> Result<usize, CodegenError> {
+    pub(super) fn field_index_of(
+        &self,
+        struct_name: &str,
+        field: &str,
+    ) -> Result<usize, CodegenError> {
         let StructDecl { fields, .. } = self
             .structs
             .iter()
             .find(|s| s.name == struct_name)
-            .ok_or_else(|| CodegenError::Unsupported(format!("unknown struct type `{struct_name}`")))?;
+            .ok_or_else(|| {
+                CodegenError::Unsupported(format!("unknown struct type `{struct_name}`"))
+            })?;
         fields.iter().position(|f| f.name == field).ok_or_else(|| {
             CodegenError::Unsupported(format!("struct `{struct_name}` has no field `{field}`"))
         })
     }
 
-    pub(super) fn contract_field_required(&self, field: &str) -> Result<&crate::syntax::ast::ContractField, CodegenError> {
+    pub(super) fn contract_field_required(
+        &self,
+        field: &str,
+    ) -> Result<&crate::syntax::ast::ContractField, CodegenError> {
         let fields = self.contract_fields.ok_or_else(|| {
             CodegenError::Unsupported("`self` is only valid on contract storage fields".into())
         })?;
-        fields.iter().find(|f| f.name == field).ok_or_else(|| {
-            CodegenError::Unsupported(format!("unknown contract field `{field}`"))
-        })
+        fields
+            .iter()
+            .find(|f| f.name == field)
+            .ok_or_else(|| CodegenError::Unsupported(format!("unknown contract field `{field}`")))
     }
 
     pub(super) fn contract_self_map_field_types(
@@ -174,4 +194,3 @@ impl ExprGen<'_, '_> {
         }
     }
 }
-

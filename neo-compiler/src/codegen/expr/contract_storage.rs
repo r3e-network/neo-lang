@@ -67,9 +67,9 @@ impl ExprGen<'_, '_> {
         }
 
         // TODO: use StdLib.Serialize to serialize the compound type to buffer.
-        return Err(CodegenError::Unsupported(format!(
+        Err(CodegenError::Unsupported(format!(
             "storage put for type `{ty:?}` is not implemented yet"
-        )));
+        )))
     }
 
     pub(super) fn emit_map_key_as_bytestring(&mut self, key_ty: &Type) -> Result<(), CodegenError> {

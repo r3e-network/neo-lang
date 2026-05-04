@@ -529,7 +529,7 @@ impl Parser {
                     let field = self.eat_ident()?;
                     expr = Expr::Member {
                         base: Box::new(expr),
-                        field: field,
+                        field,
                     };
                 }
                 Token::LBracket => {

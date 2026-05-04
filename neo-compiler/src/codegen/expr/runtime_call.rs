@@ -5,7 +5,11 @@ use crate::target::syscall::{runtime_syscall_for_method, CallFlags, Syscall};
 use super::ExprGen;
 
 impl ExprGen<'_, '_> {
-    pub(super) fn compile_runtime_call(&mut self, method: &str, args: &[Expr]) -> Result<(), CodegenError> {
+    pub(super) fn compile_runtime_call(
+        &mut self,
+        method: &str,
+        args: &[Expr],
+    ) -> Result<(), CodegenError> {
         // `System.Contract.Call` exposed as `runtime.contractCall` with injected read-only flags.
         // Syscall stack order matches `CALL`: bottom → top is last arg … first arg (see `codegen` module docs).
         if method == "contractCall" && args.len() == 3 {
@@ -35,4 +39,3 @@ impl ExprGen<'_, '_> {
         )))
     }
 }
-

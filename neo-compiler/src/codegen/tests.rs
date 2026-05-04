@@ -91,6 +91,26 @@ fn codegen_contract_without_methods() {
 }
 
 #[test]
+fn codegen_contract_field_initializer_generates_deploy_storage_put() {
+    let sf = parse_source_file("contract X { int x = 7; int get() { return self.x; } }").unwrap();
+    let out = Codegen::new().codegen_source_file(&sf).unwrap();
+    let deploy = out
+        .contract_methods
+        .iter()
+        .find(|f| f.name == "_deploy")
+        .expect("field initializer should synthesize _deploy");
+    assert_eq!(deploy.contract.as_deref(), Some("X"));
+    assert!(deploy
+        .instructions
+        .iter()
+        .any(|i| i.opcode == OpCode::PUSH7));
+    assert!(deploy.instructions.iter().any(|i| {
+        i.opcode == OpCode::SYSCALL
+            && i.operands == Syscall::STORAGE_LOCAL_PUT.token().to_le_bytes().to_vec()
+    }));
+}
+
+#[test]
 fn codegen_struct_call_emits_linked_call_l() {
     let src = r#"
         struct Point {

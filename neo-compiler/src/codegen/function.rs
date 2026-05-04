@@ -109,7 +109,7 @@ impl<'a> FunctionCompiler<'a> {
             env: &mut self.env,
             structs: self.structs,
             value_struct: &mut self.value_struct,
-            contract_fields: self.contract_fields.as_deref(),
+            contract_fields: self.contract_fields,
             pending_call_l: &mut self.pending_call_l,
             package_fn_arity: self.package_fn_arity,
         }

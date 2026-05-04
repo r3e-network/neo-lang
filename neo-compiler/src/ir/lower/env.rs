@@ -36,4 +36,3 @@ impl Env {
         self.struct_vars.get(name).map(|s| s.as_str())
     }
 }
-
