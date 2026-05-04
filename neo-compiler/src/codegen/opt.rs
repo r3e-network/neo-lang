@@ -66,7 +66,7 @@ fn call_patch_touches_range(patches: &[(usize, String)], start: usize, len: usiz
 
 /// After removing `count` instructions starting at `removed_at`, shift patch indices down.
 fn shift_call_patches_after_remove(
-    patches: &mut Vec<(usize, String)>,
+    patches: &mut [(usize, String)],
     removed_at: usize,
     count: usize,
 ) {
@@ -126,8 +126,8 @@ fn load_slot(op: OpCode, operands: &[u8]) -> Option<u8> {
 /// `LDLOC n; LDLOC n` (or `LDARG n; LDARG n`) has the same stack effect as `…; DUP`.
 /// Replace the second load with `DUP` (same instruction count; cheaper and shorter bytecode for `LDLOC`+operand).
 fn merge_adjacent_duplicate_loads(
-    inst: &mut Vec<Instruction>,
-    patches: &mut Vec<(usize, String)>,
+    inst: &mut [Instruction],
+    patches: &mut [(usize, String)],
 ) -> bool {
     let mut changed = false;
     let mut index = 0;
@@ -157,10 +157,7 @@ fn merge_adjacent_duplicate_loads(
 }
 
 /// `DUP` then `DROP`: stack depth unchanged, no storage side effects — safe to delete both.
-fn peel_redundant_dup_drop(
-    inst: &mut Vec<Instruction>,
-    patches: &mut Vec<(usize, String)>,
-) -> bool {
+fn peel_redundant_dup_drop(inst: &mut Vec<Instruction>, patches: &mut [(usize, String)]) -> bool {
     let mut changed = false;
     let mut index = 0;
     while index + 1 < inst.len() {
@@ -446,7 +443,7 @@ fn shorten_long_pc_relative_branches(inst: &mut Vec<Instruction>) -> bool {
 /// transfers to the next instruction (fall-through). Never applied to [`OpCode::CALL`] / [`OpCode::CALL_L`].
 fn peel_redundant_uncond_jmp_to_next(
     inst: &mut Vec<Instruction>,
-    patches: &mut Vec<(usize, String)>,
+    patches: &mut [(usize, String)],
 ) -> bool {
     let mut changed = false;
     let mut index = 0;
@@ -522,7 +519,7 @@ fn peel_redundant_uncond_jmp_to_next(
 /// the value is already on stack before the pair (same net stack as after `LDLOC n`).
 fn peel_redundant_stloc_ldloc_pair(
     inst: &mut Vec<Instruction>,
-    patches: &mut Vec<(usize, String)>,
+    patches: &mut [(usize, String)],
 ) -> bool {
     let mut changed = false;
     let mut index = 0;

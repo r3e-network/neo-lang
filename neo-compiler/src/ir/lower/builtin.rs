@@ -124,7 +124,7 @@ impl<'a> Builder<'a> {
                 let value = self.lower_expr(base, env)?;
                 let out = self.new_value();
                 self.emit(out, Instr::Size { value });
-                return Ok(Some(ValueRef::Value(out)));
+                Ok(Some(ValueRef::Value(out)))
             }
             "sub" => {
                 if args.len() != 2 {
@@ -142,7 +142,7 @@ impl<'a> Builder<'a> {
                         length,
                     },
                 );
-                return Ok(Some(ValueRef::Value(out)));
+                Ok(Some(ValueRef::Value(out)))
             }
             "sqrt" => {
                 if !args.is_empty() {
@@ -151,7 +151,7 @@ impl<'a> Builder<'a> {
                 let value = self.lower_expr(base, env)?;
                 let out = self.new_value();
                 self.emit(out, Instr::Sqrt { value });
-                return Ok(Some(ValueRef::Value(out)));
+                Ok(Some(ValueRef::Value(out)))
             }
             "modmul" => {
                 if args.len() != 2 {
@@ -169,7 +169,7 @@ impl<'a> Builder<'a> {
                         modulus,
                     },
                 );
-                return Ok(Some(ValueRef::Value(out)));
+                Ok(Some(ValueRef::Value(out)))
             }
             "modpow" => {
                 if args.len() != 2 {
@@ -187,7 +187,7 @@ impl<'a> Builder<'a> {
                         modulus,
                     },
                 );
-                return Ok(Some(ValueRef::Value(out)));
+                Ok(Some(ValueRef::Value(out)))
             }
             "within" => {
                 if args.len() != 2 {
@@ -205,7 +205,7 @@ impl<'a> Builder<'a> {
                         max_exclusive,
                     },
                 );
-                return Ok(Some(ValueRef::Value(out)));
+                Ok(Some(ValueRef::Value(out)))
             }
             "push" => {
                 if args.len() != 1 {
@@ -215,7 +215,7 @@ impl<'a> Builder<'a> {
                 let value = self.lower_expr(&args[0], env)?;
                 let out = self.new_value();
                 self.emit(out, Instr::ArrayAppend { array, value });
-                return Ok(Some(ValueRef::Value(out)));
+                Ok(Some(ValueRef::Value(out)))
             }
             "pop" => {
                 if !args.is_empty() {
@@ -224,7 +224,7 @@ impl<'a> Builder<'a> {
                 let array = self.lower_expr(base, env)?;
                 let out = self.new_value();
                 self.emit(out, Instr::ArrayPop { array });
-                return Ok(Some(ValueRef::Value(out)));
+                Ok(Some(ValueRef::Value(out)))
             }
             "clear" => {
                 if !args.is_empty() {
@@ -233,7 +233,7 @@ impl<'a> Builder<'a> {
                 let collection = self.lower_expr(base, env)?;
                 let out = self.new_value();
                 self.emit(out, Instr::ClearItems { collection });
-                return Ok(Some(ValueRef::Value(out)));
+                Ok(Some(ValueRef::Value(out)))
             }
             "keys" => {
                 if !args.is_empty() {
@@ -242,7 +242,7 @@ impl<'a> Builder<'a> {
                 let map = self.lower_expr(base, env)?;
                 let out = self.new_value();
                 self.emit(out, Instr::Keys { map });
-                return Ok(Some(ValueRef::Value(out)));
+                Ok(Some(ValueRef::Value(out)))
             }
             "values" => {
                 if !args.is_empty() {
@@ -251,7 +251,7 @@ impl<'a> Builder<'a> {
                 let map = self.lower_expr(base, env)?;
                 let out = self.new_value();
                 self.emit(out, Instr::Values { map });
-                return Ok(Some(ValueRef::Value(out)));
+                Ok(Some(ValueRef::Value(out)))
             }
             "has" => {
                 if args.len() != 1 {
@@ -261,7 +261,7 @@ impl<'a> Builder<'a> {
                 let key = self.lower_expr(&args[0], env)?;
                 let out = self.new_value();
                 self.emit(out, Instr::HasKey { map, key });
-                return Ok(Some(ValueRef::Value(out)));
+                Ok(Some(ValueRef::Value(out)))
             }
             "remove" => {
                 if args.len() != 1 {
@@ -271,7 +271,7 @@ impl<'a> Builder<'a> {
                 let key = self.lower_expr(&args[0], env)?;
                 let out = self.new_value();
                 self.emit(out, Instr::Remove { map, key });
-                return Ok(Some(ValueRef::Value(out)));
+                Ok(Some(ValueRef::Value(out)))
             }
             _ => Ok(None),
         }
@@ -292,7 +292,7 @@ impl<'a> Builder<'a> {
                 let message = self.lower_expr(&args[0], env)?;
                 let out = self.new_value();
                 self.emit(out, Instr::RuntimeLog { message });
-                return Ok(ValueRef::Value(out));
+                Ok(ValueRef::Value(out))
             }
             "notify" => {
                 if args.len() != 2 {
@@ -302,7 +302,7 @@ impl<'a> Builder<'a> {
                 let state = self.lower_expr(&args[1], env)?;
                 let out = self.new_value();
                 self.emit(out, Instr::RuntimeNotify { event_name, state });
-                return Ok(ValueRef::Value(out));
+                Ok(ValueRef::Value(out))
             }
             "contractCall" => {
                 if args.len() != 3 {
@@ -320,7 +320,7 @@ impl<'a> Builder<'a> {
                         params,
                     },
                 );
-                return Ok(ValueRef::Value(out));
+                Ok(ValueRef::Value(out))
             }
             _ => Err(err(format!("runtime.{method} is not a known method"))),
         }

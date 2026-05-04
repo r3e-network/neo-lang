@@ -48,3 +48,35 @@ fn rejects_map_with_non_primitive_key_type() {
     let err = ast.type_check().unwrap_err();
     assert!(err.to_string().contains("map key type must be"), "{err}");
 }
+
+#[test]
+fn rejects_mismatched_contract_field_initializer() {
+    let src = r#"
+        contract C {
+            int totalSupply = "100";
+            int get() { return self.totalSupply; }
+        }
+    "#;
+    let ast = parse_source_file(src).expect("parse");
+    let err = ast.type_check().unwrap_err();
+    assert!(
+        err.to_string().contains("initializer") && err.to_string().contains("totalSupply"),
+        "{err}"
+    );
+}
+
+#[test]
+fn rejects_mismatched_const_initializer() {
+    let src = r#"
+        contract C {
+            const bool paused = 1;
+            bool get() { return false; }
+        }
+    "#;
+    let ast = parse_source_file(src).expect("parse");
+    let err = ast.type_check().unwrap_err();
+    assert!(
+        err.to_string().contains("initializer") && err.to_string().contains("paused"),
+        "{err}"
+    );
+}

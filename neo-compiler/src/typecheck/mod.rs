@@ -83,6 +83,10 @@ impl SourceFile {
 
         self.check_source_file_map_types()?;
 
+        if let Some(contract_decl) = &self.contract {
+            ctx.check_contract_initializers(contract_decl)?;
+        }
+
         for func in &self.functions {
             ctx.check_function(func, FnType::Package)?;
         }
@@ -269,6 +273,57 @@ fn syscall_return_type(syscall: &crate::target::syscall::Syscall) -> Type {
 }
 
 impl<'a> TypeCheckContext<'a> {
+    fn check_contract_initializers(&self, contract: &ContractDecl) -> Result<(), TypeError> {
+        let mut env = FnEnv::new(false);
+        for member in &contract.members {
+            match member {
+                ContractMember::ConstProp(prop) => {
+                    self.check_initializer_type(
+                        &mut env,
+                        &prop.ty,
+                        &prop.init,
+                        &format!("const `{}`", prop.name),
+                    )?;
+                }
+                ContractMember::Field(field) => {
+                    if field.ty.is_map() && field.init.is_some() {
+                        return Err(err(format!(
+                            "initializer for contract map field `{}` is not supported",
+                            field.name
+                        )));
+                    }
+                    if let Some(init) = &field.init {
+                        self.check_initializer_type(
+                            &mut env,
+                            &field.ty,
+                            init,
+                            &format!("contract field `{}`", field.name),
+                        )?;
+                    }
+                }
+                ContractMember::Event(_) | ContractMember::Function(_) => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn check_initializer_type(
+        &self,
+        env: &mut FnEnv,
+        declared: &Type,
+        init: &Expr,
+        label: &str,
+    ) -> Result<(), TypeError> {
+        let actual = self.infer_expr(env, init)?;
+        if actual.can_assign_to(declared) {
+            Ok(())
+        } else {
+            Err(err(format!(
+                "initializer for {label} type mismatch: expected `{declared:?}`, got `{actual:?}`"
+            )))
+        }
+    }
+
     fn check_function(&self, func: &FunctionDecl, fn_type: FnType) -> Result<(), TypeError> {
         let is_contract_fn = matches!(fn_type, FnType::ContractMethod { .. });
         let mut env = FnEnv::new(is_contract_fn);
@@ -586,16 +641,14 @@ impl<'a> TypeCheckContext<'a> {
     }
 
     fn infer_expr_member_self(&self, env: &FnEnv, field: &str) -> Result<Type, TypeError> {
-        if env.is_contract_fn {
-            if !self.contract_fields.is_empty() {
-                if let Some(cf) = self.contract_fields.iter().find(|f| f.name == field) {
-                    if cf.ty.is_map() {
-                        return Err(err(format!(
-                            "use `self.{field}[key]` for contract map fields (whole-field load is not supported)"
-                        )));
-                    }
-                    return Ok(cf.ty.clone());
+        if env.is_contract_fn && !self.contract_fields.is_empty() {
+            if let Some(cf) = self.contract_fields.iter().find(|f| f.name == field) {
+                if cf.ty.is_map() {
+                    return Err(err(format!(
+                        "use `self.{field}[key]` for contract map fields (whole-field load is not supported)"
+                    )));
                 }
+                return Ok(cf.ty.clone());
             }
         }
         let struct_name = env.value_struct.get("self").ok_or_else(|| {
@@ -1006,7 +1059,7 @@ impl<'a> TypeCheckContext<'a> {
                     return Err(err(format!("contract doesn't have field `{field}`")));
                 };
                 if let Type::Map { key, .. } = &cf.ty {
-                    return self.check_contract_storage_map_method(&key, method, args, env);
+                    return self.check_contract_storage_map_method(key, method, args, env);
                 }
             }
         };
@@ -1177,7 +1230,7 @@ impl<'a> TypeCheckContext<'a> {
                         "`assert` second argument must be string, got `{t1:?}`"
                     )));
                 }
-                return Ok(Some(Type::Void));
+                Ok(Some(Type::Void))
             }
             "abort" => {
                 if args.len() != 1 {
@@ -1187,7 +1240,7 @@ impl<'a> TypeCheckContext<'a> {
                 if t0 != Type::String {
                     return Err(err(format!("`abort` expects string, got `{t0:?}`")));
                 }
-                return Ok(Some(Type::Void));
+                Ok(Some(Type::Void))
             }
             "min" | "max" => {
                 if args.len() != 2 {
@@ -1200,7 +1253,7 @@ impl<'a> TypeCheckContext<'a> {
                         "`{name}` expects two int arguments, got `{t0:?}` and `{t1:?}`"
                     )));
                 }
-                return Ok(Some(Type::Int));
+                Ok(Some(Type::Int))
             }
             _ => Ok(None),
         }

@@ -7,7 +7,7 @@ It is a high-level programming language that is designed to be easy to use.
 
 ```
 // Define a contract. Any `neo-lang` program must be a(only one) contract.
-#[auther("AuthorName")]
+#[author("AuthorName")]
 #[version("0.0.1")]
 contract Example {
     // Declare a constant string property
@@ -330,7 +330,7 @@ The value(or value list) is optional.
 
 Example:
 ```
-#[auther("AuthorName")]
+#[author("AuthorName")]
 #[version("0.0.1")]
 contract Example {
     // ...
@@ -338,10 +338,10 @@ contract Example {
 ```
 
 ### Built-in Attributes
-- `#[auther("AuthorName")]`: For contract, the author.
+- `#[author("AuthorName")]`: For contract, the author.
 - `#[version("0.0.1")]`: For contract, the version.
-- `#[pure]`: For contract method, mark the method as pure(never store data, never emit events, never call other contracts).
-- `#[noreentrant]`: For contract method, mark the method as non-reentrant.
+- `#[description("...")]`: For contract, the description.
+- `#[safe]`: For contract method, mark the method as safe in the generated manifest.
 
 
 ### Package

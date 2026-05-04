@@ -1,6 +1,6 @@
 //! Build the target file (NEF + manifest) for a source file.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 
 use crate::codegen::{Codegen, CompiledSourceFile};
@@ -118,6 +118,7 @@ fn build_manifest(ast: &SourceFile, compiled: &CompiledSourceFile) -> Result<Man
     }
 
     let mut methods = Vec::new();
+    let mut manifest_method_names = HashSet::new();
     let mut events = Vec::new();
     for member in &contract.members {
         match member {
@@ -129,6 +130,7 @@ fn build_manifest(ast: &SourceFile, compiled: &CompiledSourceFile) -> Result<Man
                 let offset = *contract_method_offset.get(&func.name).ok_or_else(|| {
                     format!("no compiled offset for contract method `{}`", func.name)
                 })?;
+                manifest_method_names.insert(func.name.clone());
                 methods.push(ContractMethod {
                     name: func.name.clone(),
                     parameters: func
@@ -158,6 +160,26 @@ fn build_manifest(ast: &SourceFile, compiled: &CompiledSourceFile) -> Result<Man
                 });
             }
             _ => {}
+        }
+    }
+    if !manifest_method_names.contains("_deploy") {
+        if let Some(offset) = contract_method_offset.get("_deploy") {
+            methods.push(ContractMethod {
+                name: "_deploy".into(),
+                parameters: vec![
+                    ContractParameter {
+                        name: "data".into(),
+                        ty: manifest_type_name(&Type::Any),
+                    },
+                    ContractParameter {
+                        name: "update".into(),
+                        ty: manifest_type_name(&Type::Bool),
+                    },
+                ],
+                return_type: manifest_type_name(&Type::Void),
+                offset: *offset,
+                safe: false,
+            });
         }
     }
 

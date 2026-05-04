@@ -684,6 +684,16 @@ mod tests {
     }
 
     #[test]
+    fn opcode_classifies_short_and_long_jumps() {
+        assert!(OpCode::JMP.is_jump_short());
+        assert!(!OpCode::JMP.is_jump_long());
+        assert!(OpCode::JMP_L.is_jump_long());
+        assert!(!OpCode::JMP_L.is_jump_short());
+        assert!(OpCode::JMPIFNOT_L.is_change_pc_long());
+        assert!(!OpCode::JMPIFNOT_L.is_change_pc_short());
+    }
+
+    #[test]
     fn two_forward_jmps_independent_patches() {
         let mut b = Builder::new();
         let j0 = b.emit_jmp_l_placeholder();

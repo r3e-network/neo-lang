@@ -2,9 +2,9 @@ use super::*;
 use crate::target::syscall::Syscall;
 use crate::target::Instruction;
 
-fn compile_expr_stub<'a>(
+fn compile_expr_stub(
     params: &[Param],
-    structs: &'a [StructDecl],
+    structs: &[StructDecl],
     value_struct: &mut HashMap<String, String>,
     expr: &Expr,
 ) -> Result<Vec<Instruction>, CodegenError> {
@@ -69,13 +69,28 @@ fn convert_operand_named_and_void_are_none() {
 
 #[test]
 fn parse_int_decimal_hex_binary() {
-    assert_eq!(parse_int_literal("0"), Some(0));
-    assert_eq!(parse_int_literal("-42"), Some(-42));
-    assert_eq!(parse_int_literal("1_000"), Some(1000));
-    assert_eq!(parse_int_literal("0xFF"), Some(255));
-    assert_eq!(parse_int_literal("0X10"), Some(16));
-    assert_eq!(parse_int_literal("0b1010"), Some(10));
-    assert_eq!(parse_int_literal("0B11"), Some(3));
+    assert_eq!(parse_int_literal("0").and_then(|n| n.as_i128()), Some(0));
+    assert_eq!(
+        parse_int_literal("-42").and_then(|n| n.as_i128()),
+        Some(-42)
+    );
+    assert_eq!(
+        parse_int_literal("1_000").and_then(|n| n.as_i128()),
+        Some(1000)
+    );
+    assert_eq!(
+        parse_int_literal("0xFF").and_then(|n| n.as_i128()),
+        Some(255)
+    );
+    assert_eq!(
+        parse_int_literal("0X10").and_then(|n| n.as_i128()),
+        Some(16)
+    );
+    assert_eq!(
+        parse_int_literal("0b1010").and_then(|n| n.as_i128()),
+        Some(10)
+    );
+    assert_eq!(parse_int_literal("0B11").and_then(|n| n.as_i128()), Some(3));
 }
 
 #[test]
@@ -84,6 +99,22 @@ fn parse_int_invalid() {
     assert_eq!(parse_int_literal("0x"), None);
     assert_eq!(parse_int_literal("0b"), None);
     assert_eq!(parse_int_literal("not_a_number"), None);
+}
+
+#[test]
+fn expr_literal_int256_uses_pushint256() {
+    let mut value_struct = HashMap::new();
+    let inst = compile_expr_stub(
+        &[],
+        &[],
+        &mut value_struct,
+        &Expr::Literal(Literal::Int(
+            "1606938044258990275541962092341162602522202993782792835301376".into(),
+        )),
+    )
+    .unwrap();
+    assert_eq!(inst[0].opcode, OpCode::PUSHINT256);
+    assert_eq!(inst[0].operands[25], 1);
 }
 
 #[test]

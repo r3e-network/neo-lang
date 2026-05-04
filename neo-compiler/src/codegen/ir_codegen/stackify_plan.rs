@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::codegen::expr::parse_int_literal;
+use crate::codegen::expr::ParsedIntLiteral;
 use crate::codegen::CodegenError;
 use crate::ir::*;
 use crate::syntax::ast::Literal;
@@ -12,7 +13,7 @@ fn is_cheap_const_literal(lit: &Literal) -> bool {
             let Some(n) = parse_int_literal(s) else {
                 return false;
             };
-            (i32::MIN as i128..=i32::MAX as i128).contains(&n)
+            matches!(n, ParsedIntLiteral::I128(n) if (i32::MIN as i128..=i32::MAX as i128).contains(&n))
         }
         Literal::String(v) | Literal::Buffer(v) => v.len() <= 4,
     }
@@ -94,8 +95,8 @@ impl FunctionIr {
                 if let Instr::Binary { left, right, .. } = instr {
                     if left == right {
                         if let ValueRef::Value(id) = left {
-                            if uses.get(&id).copied() == Some(2) && !cross_block_use.contains(&id) {
-                                spill.remove(&id);
+                            if uses.get(id).copied() == Some(2) && !cross_block_use.contains(id) {
+                                spill.remove(id);
                             }
                         }
                     }

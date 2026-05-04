@@ -518,7 +518,7 @@ impl<'a> Builder<'a> {
                 value: ValueRef::Value(new_value_out),
             },
         );
-        return Ok(ValueRef::Value(out));
+        Ok(ValueRef::Value(out))
     }
 
     fn lower_compound_assign_member(
@@ -623,7 +623,7 @@ impl<'a> Builder<'a> {
                 value: ValueRef::Value(new_value_out),
             },
         );
-        return Ok(ValueRef::Value(out));
+        Ok(ValueRef::Value(out))
     }
 
     pub fn lower_call(

@@ -217,6 +217,81 @@ pub enum CodegenError {
 
 pub struct Codegen {}
 
+impl Default for Codegen {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn contract_field_initializer_stmts(fields: &[ContractField]) -> Vec<Stmt> {
+    fields
+        .iter()
+        .filter_map(|field| {
+            field.init.as_ref().map(|init| {
+                Stmt::Expr(Expr::Assign {
+                    target: Box::new(Expr::Member {
+                        base: Box::new(Expr::Self_),
+                        field: field.name.clone(),
+                    }),
+                    op: AssignOp::Assign,
+                    value: Box::new(init.clone()),
+                })
+            })
+        })
+        .collect()
+}
+
+fn generated_deploy_function(init_stmts: &[Stmt]) -> FunctionDecl {
+    let mut stmts = vec![Stmt::If {
+        cond: Expr::Ident("update".into()),
+        then_block: Block {
+            stmts: vec![Stmt::Return(None)],
+        },
+        else_block: None,
+    }];
+    stmts.extend(init_stmts.iter().cloned());
+    FunctionDecl {
+        attributes: vec![],
+        return_ty: Type::Void,
+        name: "_deploy".into(),
+        params: vec![
+            Param {
+                ty: Type::Any,
+                name: "data".into(),
+            },
+            Param {
+                ty: Type::Bool,
+                name: "update".into(),
+            },
+        ],
+        body: Block { stmts },
+    }
+}
+
+fn deploy_with_field_initializers(method: &FunctionDecl, init_stmts: &[Stmt]) -> FunctionDecl {
+    let update_guard = method
+        .params
+        .get(1)
+        .filter(|param| param.ty == Type::Bool)
+        .map(|param| Stmt::If {
+            cond: Expr::Ident(param.name.clone()),
+            then_block: Block {
+                stmts: vec![Stmt::Return(None)],
+            },
+            else_block: None,
+        });
+    let mut stmts = Vec::new();
+    if let Some(guard) = update_guard {
+        stmts.push(guard);
+    }
+    stmts.extend(init_stmts.iter().cloned());
+    stmts.extend(method.body.stmts.iter().cloned());
+
+    let mut out = method.clone();
+    out.body = Block { stmts };
+    out
+}
+
 impl Codegen {
     pub fn new() -> Self {
         Self {}
@@ -244,6 +319,7 @@ impl Codegen {
             .as_ref()
             .map(get_contract_fields)
             .unwrap_or_default();
+        let field_init_stmts = contract_field_initializer_stmts(&contract_fields);
 
         let storage_fields = (!contract_fields.is_empty()).then_some(contract_fields.as_slice());
         let mut package_fn_arity = HashMap::new();
@@ -287,21 +363,32 @@ impl Codegen {
 
         let mut contract_methods = Vec::new();
         if let Some(contract_decl) = &source.contract {
+            let mut method_decls = Vec::new();
+            let mut has_deploy = false;
             for member in &contract_decl.members {
                 if let ContractMember::Function(method) = member {
-                    let compiled = compile_function(
-                        method,
-                        &source.structs,
-                        storage_fields,
-                        &package_fn_arity,
-                    )?;
-                    contract_methods.push(CompiledFunction {
-                        name: method.name.clone(),
-                        contract: Some(contract_decl.name.clone()),
-                        instructions: compiled.instructions,
-                        call_patches: compiled.call_patches,
-                    });
+                    has_deploy |= method.name == "_deploy";
+                    let method = if method.name == "_deploy" && !field_init_stmts.is_empty() {
+                        deploy_with_field_initializers(method, &field_init_stmts)
+                    } else {
+                        method.clone()
+                    };
+                    method_decls.push(method);
                 }
+            }
+            if !has_deploy && !field_init_stmts.is_empty() {
+                method_decls.push(generated_deploy_function(&field_init_stmts));
+            }
+
+            for method in &method_decls {
+                let compiled =
+                    compile_function(method, &source.structs, storage_fields, &package_fn_arity)?;
+                contract_methods.push(CompiledFunction {
+                    name: method.name.clone(),
+                    contract: Some(contract_decl.name.clone()),
+                    instructions: compiled.instructions,
+                    call_patches: compiled.call_patches,
+                });
             }
         }
 

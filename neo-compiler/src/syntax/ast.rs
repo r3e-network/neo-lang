@@ -335,7 +335,7 @@ pub enum Type {
 
 impl Type {
     pub(crate) fn can_assign_to(&self, to: &Type) -> bool {
-        return self == to || matches!(self, Type::Any);
+        self == to || matches!(self, Type::Any)
     }
 
     /// Allowed `map` key types (NeoVM map keys are scalar-like in neo-lang).
