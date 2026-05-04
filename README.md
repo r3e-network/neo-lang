@@ -472,3 +472,4 @@ void callExample() {
 - Use camelCase for variable, event, function names.
 - Use PascalCase for struct, contract names.
 - Use lowercase for package names.
+- Use lowercase and "_" for file name, and the file name suffix must be `.neo`.

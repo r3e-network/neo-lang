@@ -1,0 +1,33 @@
+// This is a simple NEP17 contract.
+
+#[author("AuthorName")]
+#[version("0.0.1")]
+#[description("This is a simple NEP17 contract.")]
+contract NEP17 {
+    const string symbol = "NEP17-Example";
+
+    const int decimals = 8;
+
+    int totalSupply = 100000000;
+
+    map[hash160, int] balances;
+
+    int balanceOf(hash160 owner) {
+        return self.balances[owner];
+    }
+
+    bool _updateBalance(hash160 owner, int amount) {
+        var balance = self.balances[owner];
+        balance += amount;
+        if balance < 0 {
+            return false;
+        }
+
+        if balance == 0 {
+            self.balances.remove(owner);
+        } else {
+            self.balances[owner] = balance;
+        }
+        return true;
+    }
+}

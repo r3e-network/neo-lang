@@ -1,0 +1,12 @@
+// This is a simple hello world contract.
+
+#[author("AuthorName")]
+#[version("0.0.1")]
+#[description("This is a simple hello world contract.")]
+contract HelloWorld {
+
+    #[safe]
+    string sayHello() {
+        return "Hello, World!";
+    }
+}

@@ -121,30 +121,25 @@ pub(crate) fn format_operands(offset: usize, inst: &Instruction) -> String {
                 pushdata_summary(o)
             }
         }
-        _ if matches!(
-            op,
-            OpCode::JMP_L
-                | OpCode::JMPIF_L
-                | OpCode::JMPIFNOT_L
-                | OpCode::JMPEQ_L
-                | OpCode::JMPNE_L
-                | OpCode::JMPGT_L
-                | OpCode::JMPGE_L
-                | OpCode::JMPLT_L
-                | OpCode::JMPLE_L
-                | OpCode::CALL_L
-                | OpCode::TRY_L
-                | OpCode::ENDTRY_L
-        ) && o.len() == 4 =>
-        {
+        OpCode::TRY if o.len() == 2 => {
+            let catch = o[0] as i8 as i32;
+            let finally = o[1] as i8 as i32;
+            format!("catch={:+05x} finally={:+05x}", catch, finally)
+        }
+        _ if op.is_change_pc_short() && o.len() == 1 => {
+            let relative = o[0] as i8 as i32;
+            let target = offset as i32 + relative;
+            format!("relative={:+05x} target={:+05x}", relative, target)
+        }
+        _ if op.is_change_pc_long() && o.len() == 4 => {
             // NeoVM: signed offset in bytes from the **first byte of this instruction**
             // (the opcode) to the target instruction — not an absolute script index.
             let relative = i32::from_le_bytes([o[0], o[1], o[2], o[3]]);
             let target = offset as i32 + relative;
-            format!("relative={:+05} target={:+05}", relative, target)
+            format!("relative={:+05x} target={:+05x}", relative, target)
         }
         _ if o.is_empty() => String::new(),
-        _ => format!("[{}]", hex::encode(o)),
+        _ => format!("operands=0x{}", hex::encode(o)),
     }
 }
 

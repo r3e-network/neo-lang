@@ -331,6 +331,7 @@ impl Terminator {
             }
         }
         match self {
+            Terminator::Unset => {}
             Terminator::Return(value) => {
                 if let Some(value) = value {
                     bump(*value, out);
@@ -373,6 +374,7 @@ impl Terminator {
             }
         }
         match self {
+            Terminator::Unset => {}
             Terminator::Return(value) => {
                 if let Some(value) = value {
                     bump(use_bb, *value, def_block, out);

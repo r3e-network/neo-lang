@@ -361,6 +361,7 @@ impl FunctionIr {
 
 fn collect_uses_in_term(terminator: &Terminator, out: &mut VecDeque<ValueId>) {
     match terminator {
+        Terminator::Unset => {}
         Terminator::Return(v) => {
             if let Some(ValueRef::Value(x)) = v {
                 out.push_back(*x);
@@ -858,6 +859,7 @@ fn rewrite_value_refs_in_instr(instr: &mut Instr, subst: &HashMap<ValueId, Value
 
 fn rewrite_value_refs_in_term(terminator: &mut Terminator, subst: &HashMap<ValueId, ValueRef>) {
     match terminator {
+        Terminator::Unset => {}
         Terminator::Return(value) => {
             if let Some(x) = value {
                 *x = rewrite(*x, subst);

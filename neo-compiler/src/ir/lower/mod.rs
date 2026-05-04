@@ -61,5 +61,9 @@ pub fn lower_function_to_ir(
     }
 
     builder.lower_block(&func.body, &mut env, &func.return_ty)?;
+    let current = builder.current_block;
+    if matches!(builder.blocks[&current].term, Terminator::Unset) {
+        builder.set_term(current, Terminator::Return(None));
+    }
     Ok(builder.finish(entry))
 }

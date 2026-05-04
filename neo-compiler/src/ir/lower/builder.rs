@@ -31,7 +31,7 @@ impl<'a> Builder<'a> {
             BasicBlock {
                 params: Vec::new(),
                 instrs: Vec::new(),
-                term: Terminator::Return(None),
+                term: Terminator::Unset,
             },
         );
         id
@@ -456,10 +456,9 @@ impl<'a> Builder<'a> {
                 right: rhs,
             },
         );
-        let out = self.new_value();
-        self.emit(out, Instr::Copy(ValueRef::Value(new_value_out)));
-        env.set(name, ValueRef::Value(out));
-        return Ok(ValueRef::Value(out));
+        // No `Copy`: a second `ValueId` would often get its own spill slot and duplicate `STLOC`s.
+        env.set(name, ValueRef::Value(new_value_out));
+        Ok(ValueRef::Value(new_value_out))
     }
 
     fn lower_compound_assign_index(

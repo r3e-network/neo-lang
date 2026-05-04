@@ -237,9 +237,25 @@ impl Builder {
                     "ir-codegen: IndexSet/StructFieldSet must be emitted in-order".into(),
                 ))
             }
-            Instr::Copy(value) => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)
-            }
+            Instr::Copy(value) => match *value {
+                // Only `lower_function_to_ir` emits `Copy(Param(i))` for callee formals. That is never a
+                // join-slot phi; `LDARG i` is valid on every basic block in the routine.
+                ValueRef::Param(ParamId(idx)) => {
+                    let index = u8::try_from(idx).map_err(|_| {
+                        CodegenError::Unsupported(
+                            "internal: formal index overflow for LDARG".into(),
+                        )
+                    })?;
+                    if index >= ctx.arg_count {
+                        return Err(CodegenError::Unsupported(
+                            "internal: Copy(Param(i)) with i >= arg_count".into(),
+                        ));
+                    }
+                    self.emit_ldarg(index);
+                    Ok(())
+                }
+                other => self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, other),
+            },
             Instr::Unary { op, value } => {
                 self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)?;
                 match op {
@@ -291,11 +307,7 @@ impl Builder {
                 self.emit_convert_buffer_on_stack_to_type(val_ty)?;
                 Ok(())
             }
-            Instr::ContractMapStorageHas {
-                field,
-                key_ty,
-                key,
-            } => {
+            Instr::ContractMapStorageHas { field, key_ty, key } => {
                 self.emit_contract_map_composite_key(
                     ctx,
                     emitted_spills,

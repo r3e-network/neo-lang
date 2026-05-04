@@ -370,5 +370,8 @@ pub struct Manifest {
     pub abi: ContractAbi,
     pub permissions: Vec<ContractPermission>,
     pub trusts: PermissionRule,
+
+    // The extra metadata for the contract.
+    // Including the contract author, version, etc.
     pub extra: HashMap<String, String>,
 }

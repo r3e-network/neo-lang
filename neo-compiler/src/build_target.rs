@@ -59,6 +59,22 @@ pub(crate) fn run_build(source: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
+fn is_predefined_fn(name: &str) -> bool {
+    name == "_deploy" || name == "_initialize"
+}
+
+fn build_extra_metadata(ast: &SourceFile) -> Result<HashMap<String, String>, String> {
+    let Some(attrs) = ast.contract.as_ref() else {
+        return Ok(HashMap::new());
+    };
+    let mut extra = HashMap::new();
+    for attr in &attrs.attributes {
+        let values = attr.args.join(",");
+        extra.insert(attr.name.clone(), values);
+    }
+    Ok(extra)
+}
+
 fn build_manifest(ast: &SourceFile, compiled: &CompiledSourceFile) -> Result<Manifest, String> {
     let contract = ast
         .contract
@@ -105,13 +121,17 @@ fn build_manifest(ast: &SourceFile, compiled: &CompiledSourceFile) -> Result<Man
     let mut events = Vec::new();
     for member in &contract.members {
         match member {
-            ContractMember::Function(function) => {
-                let offset = *contract_method_offset.get(&function.name).ok_or_else(|| {
-                    format!("no compiled offset for contract method `{}`", function.name)
+            ContractMember::Function(func) => {
+                if func.name.starts_with('_') && !is_predefined_fn(&func.name) {
+                    continue;
+                }
+
+                let offset = *contract_method_offset.get(&func.name).ok_or_else(|| {
+                    format!("no compiled offset for contract method `{}`", func.name)
                 })?;
                 methods.push(ContractMethod {
-                    name: function.name.clone(),
-                    parameters: function
+                    name: func.name.clone(),
+                    parameters: func
                         .params
                         .iter()
                         .map(|param| ContractParameter {
@@ -119,9 +139,9 @@ fn build_manifest(ast: &SourceFile, compiled: &CompiledSourceFile) -> Result<Man
                             ty: manifest_type_name(&param.ty),
                         })
                         .collect(),
-                    return_type: manifest_type_name(&function.return_ty),
+                    return_type: manifest_type_name(&func.return_ty),
                     offset,
-                    safe: false,
+                    safe: func.attributes.iter().any(|attr| attr.name == "safe"),
                 });
             }
             ContractMember::Event(event) => {
@@ -149,9 +169,9 @@ fn build_manifest(ast: &SourceFile, compiled: &CompiledSourceFile) -> Result<Man
         permissions: vec![ContractPermission {
             contract: WILDCARD.into(),
             methods: PermissionRule::All,
-        }],
-        trusts: PermissionRule::All,
-        extra: HashMap::new(),
+        }], // TODO: get permissions of the contract
+        trusts: PermissionRule::All, // TODO: get trusts of the contract
+        extra: build_extra_metadata(ast)?,
     })
 }
 

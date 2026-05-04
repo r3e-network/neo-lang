@@ -7,9 +7,10 @@
 //! index by the number of instructions removed.
 //!
 //! ## What not to do here
-//! - Do not remove or reorder instructions without adjusting **all** branch targets
-//!   (`JMP_L`, `JMPIF_L`, …) and [`OpCode::CALL_L`] operands (those are patched in bytes before
-//!   link; indices still shift if you edit the vec earlier — this module only runs **pre-link**).
+//! - Do not remove or reorder instructions without adjusting **all** branch targets (`JMP` /
+//!   `JMP_L`, `JMPIF` / `JMPIF_L`, …, `CALL` / `CALL_L`, `TRY` / `TRY_L`, …) — operands are
+//!   PC-relative byte offsets before link; indices still shift if you edit the vec earlier (this
+//!   module only runs **pre-link**).
 //! - Adjacent `STLOC n` then `LDLOC n` is removed **only** when no later `LDLOC n` appears before the
 //!   next `STLOC n` (so the slot write was only consumed by that reload; the value stays on stack).
 //!
@@ -23,6 +24,15 @@
 //! - [`OpCode::DUP`] then [`OpCode::DROP`] removed when no [`OpCode::CALL_L`] patch targets those indices.
 //! - Adjacent `STLOC n` then `LDLOC n` removed when the store is only for that reload (see
 //!   [`peel_redundant_stloc_ldloc_pair`]).
+//! - Unconditional [`OpCode::JMP`] / [`OpCode::JMP_L`] whose relative offset equals “fall through” to
+//!   the next instruction (same net control flow) is removed; every branch / call / try with a
+//!   **1-byte** or **4-byte** PC-relative operand is re-encoded for the shorter script (see
+//!   [`relayout_pc_relatives`]). If a short-form offset would no longer fit in `i8`, the redundant
+//!   jump is not removed.
+//! - Single-operand `*_L` / [`OpCode::ENDTRY_L`] are narrowed to their 1-byte opcode when the offset
+//!   fits in `i8` (see [`shorten_long_pc_relative_branches`]). [`OpCode::CALL_L`] is left as the long
+//!   form until [`super::CompiledSourceFile::link_call_l_patches`] (which patches 4-byte operands).
+//!   [`OpCode::TRY_L`] is unchanged (two `i32` operands are not one contiguous shrink in the script layout).
 
 use crate::codegen::{CompiledFunction, CompiledSourceFile};
 use crate::target::opcode::OpCode;
@@ -170,6 +180,344 @@ fn peel_redundant_dup_drop(
     changed
 }
 
+/// Byte offset of each instruction's opcode in the serialized script (sum of prior `encoded_len()`).
+fn prefix_byte_offsets(inst: &[Instruction]) -> Vec<usize> {
+    let mut out = Vec::with_capacity(inst.len());
+    let mut pc = 0usize;
+    for ins in inst {
+        out.push(pc);
+        pc += ins.encoded_len();
+    }
+    out
+}
+
+/// Map a byte offset in the script **before** deleting `[del_start, del_start + del_len)` into the
+/// new script.
+///
+/// The deleted span is always a redundant **unconditional** jump (fall-through to its successor).
+/// Any branch that targeted the first byte of that jump (common for `JMPIFNOT_L` → else stub) or
+/// any interior byte must land at the same place as executing that jump would: the successor’s
+/// first byte, which after deletion sits at offset `del_start` in the new script.
+fn map_byte_offset_after_delete(p: usize, del_start: usize, del_len: usize) -> usize {
+    if p < del_start {
+        p
+    } else if p < del_start + del_len {
+        del_start
+    } else {
+        p - del_len
+    }
+}
+
+fn read_i32_le(b: &[u8]) -> Option<i32> {
+    if b.len() < 4 {
+        return None;
+    }
+    Some(i32::from_le_bytes(b[0..4].try_into().ok()?))
+}
+
+fn write_i32_le(out: &mut [u8], rel: i32) {
+    out[0..4].copy_from_slice(&rel.to_le_bytes());
+}
+
+#[inline]
+fn operand_as_i8(operands: &[u8]) -> Option<i8> {
+    operands.first().copied().map(|b| b as i8)
+}
+
+/// Map an absolute byte offset after removing a **strict** contiguous half-open range
+/// `[del_start, del_start + del_len)` with no interior landing semantics.
+fn map_byte_offset_after_strict_remove(
+    absolute_offset: usize,
+    del_start: usize,
+    del_len: usize,
+) -> Option<usize> {
+    if absolute_offset < del_start {
+        Some(absolute_offset)
+    } else if absolute_offset < del_start + del_len {
+        None
+    } else {
+        Some(absolute_offset - del_len)
+    }
+}
+
+/// Re-encode every PC-relative branch / call / try operand after a script edit. `old_index(j)` maps
+/// each surviving instruction index `j` in `inst` to its index in the **pre-edit** `prefix_before`
+/// table. `map_abs` maps an absolute byte offset in the pre-edit script to the post-edit script
+/// (`None` ⇒ invalid / abort).
+fn relayout_pc_relatives(
+    inst: &mut [Instruction],
+    prefix_before: &[usize],
+    prefix_after: &[usize],
+    mut old_index: impl FnMut(usize) -> usize,
+    mut map_abs: impl FnMut(usize) -> Option<usize>,
+) -> bool {
+    debug_assert_eq!(prefix_after.len(), inst.len());
+
+    for (j, instr) in inst.iter_mut().enumerate() {
+        let old_o = old_index(j);
+        let old_j_pc = prefix_before[old_o];
+        let new_j_pc = prefix_after[j];
+        match instr.opcode {
+            OpCode::TRY => {
+                if instr.operands.len() != 2 {
+                    continue;
+                }
+                for offset in [0usize, 1usize] {
+                    let relative = instr.operands[offset] as i8 as i32;
+                    let abs = old_j_pc as i64 + relative as i64;
+                    let Ok(abs) = usize::try_from(abs) else {
+                        return false;
+                    };
+                    let Some(new_abs) = map_abs(abs) else {
+                        return false;
+                    };
+                    let new_relative = new_abs as i64 - new_j_pc as i64;
+                    let Ok(n) = i8::try_from(new_relative) else {
+                        return false;
+                    };
+                    instr.operands[offset] = n as u8;
+                }
+            }
+            _ if instr.opcode.is_change_pc_short() => {
+                if instr.operands.len() != 1 {
+                    continue;
+                }
+                let relative = match operand_as_i8(&instr.operands) {
+                    Some(r) => r as i32,
+                    None => continue,
+                };
+                let abs = old_j_pc as i64 + relative as i64;
+                let Ok(abs) = usize::try_from(abs) else {
+                    return false;
+                };
+                let Some(new_abs) = map_abs(abs) else {
+                    return false;
+                };
+                let new_relative = new_abs as i64 - new_j_pc as i64;
+                let Ok(n) = i8::try_from(new_relative) else {
+                    return false;
+                };
+                instr.operands[0] = n as u8;
+            }
+            OpCode::TRY_L => {
+                if instr.operands.len() != 8 {
+                    continue;
+                }
+                let relative_catch = match read_i32_le(&instr.operands[0..4]) {
+                    Some(r) => r,
+                    None => continue,
+                };
+                let relative_finally = match read_i32_le(&instr.operands[4..8]) {
+                    Some(r) => r,
+                    None => continue,
+                };
+                for (offset, relative) in [(0usize, relative_catch), (4usize, relative_finally)] {
+                    let abs = old_j_pc as i64 + relative as i64;
+                    let Ok(abs) = usize::try_from(abs) else {
+                        return false;
+                    };
+                    let Some(new_abs) = map_abs(abs) else {
+                        return false;
+                    };
+                    let Ok(new_relative) = i32::try_from(new_abs as i64 - new_j_pc as i64) else {
+                        return false;
+                    };
+                    write_i32_le(&mut instr.operands[offset..offset + 4], new_relative);
+                }
+            }
+            _ if instr.opcode.is_change_pc_long() => {
+                if instr.operands.len() != 4 {
+                    continue;
+                }
+                let relative = match read_i32_le(&instr.operands) {
+                    Some(r) => r,
+                    None => continue,
+                };
+                let abs = old_j_pc as i64 + relative as i64;
+                let Ok(abs) = usize::try_from(abs) else {
+                    return false;
+                };
+                let Some(new_abs) = map_abs(abs) else {
+                    return false;
+                };
+                let Ok(new_relative) = i32::try_from(new_abs as i64 - new_j_pc as i64) else {
+                    return false;
+                };
+                write_i32_le(&mut instr.operands, new_relative);
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+/// After deleting `del_len` bytes starting at `del_start` in the pre-delete script (whole
+/// instruction removal), re-encode PC-relative operands.
+fn relayout_branch_operands_after_byte_delete(
+    inst: &mut [Instruction],
+    prefix_before: &[usize],
+    prefix_after: &[usize],
+    del_start: usize,
+    del_len: usize,
+    removed_instr_index: usize,
+) -> bool {
+    debug_assert_eq!(prefix_before.len(), inst.len() + 1);
+    relayout_pc_relatives(
+        inst,
+        prefix_before,
+        prefix_after,
+        |j| if j < removed_instr_index { j } else { j + 1 },
+        |abs| Some(map_byte_offset_after_delete(abs, del_start, del_len)),
+    )
+}
+
+fn long_pc_branch_to_short_opcode(op: OpCode) -> Option<OpCode> {
+    match op {
+        OpCode::JMP_L => Some(OpCode::JMP),
+        OpCode::JMPIF_L => Some(OpCode::JMPIF),
+        OpCode::JMPIFNOT_L => Some(OpCode::JMPIFNOT),
+        OpCode::JMPEQ_L => Some(OpCode::JMPEQ),
+        OpCode::JMPNE_L => Some(OpCode::JMPNE),
+        OpCode::JMPGT_L => Some(OpCode::JMPGT),
+        OpCode::JMPGE_L => Some(OpCode::JMPGE),
+        OpCode::JMPLT_L => Some(OpCode::JMPLT),
+        OpCode::JMPLE_L => Some(OpCode::JMPLE),
+        OpCode::ENDTRY_L => Some(OpCode::ENDTRY),
+        _ => None,
+    }
+}
+
+/// Replace eligible `*_L` / [`OpCode::ENDTRY_L`] with 1-byte-operand forms when the offset fits in
+/// `i8`. Operand layout shrinks by removing the high 3 bytes of the LE `i32` (script bytes
+/// `[instr_start + 2, instr_start + 5)`). [`OpCode::CALL_L`] is excluded: link still patches
+/// 4-byte [`OpCode::CALL_L`] operands.
+fn try_shorten_long_pc_branch_at(inst: &mut Vec<Instruction>, index: usize) -> bool {
+    let ins = &inst[index];
+    let Some(short_op) = long_pc_branch_to_short_opcode(ins.opcode) else {
+        return false;
+    };
+    if ins.operands.len() != 4 {
+        return false;
+    }
+    let relative = match read_i32_le(&ins.operands) {
+        Some(r) => r,
+        None => return false,
+    };
+    if !(i8::MIN as i32..=i8::MAX as i32).contains(&relative) {
+        return false;
+    }
+
+    let prefix_before = prefix_byte_offsets(inst);
+    let instr_start = prefix_before[index];
+    let del_start = instr_start + 2;
+    let del_len = 3;
+
+    let mut trial = inst.clone();
+    trial[index] = Instruction {
+        opcode: short_op,
+        operands: vec![relative as i8 as u8],
+    };
+    let prefix_after = prefix_byte_offsets(&trial);
+    if !relayout_pc_relatives(
+        &mut trial,
+        &prefix_before,
+        &prefix_after,
+        |j| j,
+        |abs| map_byte_offset_after_strict_remove(abs, del_start, del_len),
+    ) {
+        return false;
+    }
+    *inst = trial;
+    true
+}
+
+/// One forward pass: shorten every eligible long PC-relative branch.
+fn shorten_long_pc_relative_branches(inst: &mut Vec<Instruction>) -> bool {
+    let mut changed = false;
+    for index in 0..inst.len() {
+        if try_shorten_long_pc_branch_at(inst, index) {
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Unconditional [`OpCode::JMP`] / [`OpCode::JMP_L`] whose offset equals its own encoded length only
+/// transfers to the next instruction (fall-through). Never applied to [`OpCode::CALL`] / [`OpCode::CALL_L`].
+fn peel_redundant_uncond_jmp_to_next(
+    inst: &mut Vec<Instruction>,
+    patches: &mut Vec<(usize, String)>,
+) -> bool {
+    let mut changed = false;
+    let mut index = 0;
+    while index < inst.len() {
+        let ins = &inst[index];
+        let relative = match (&ins.opcode, ins.operands.len()) {
+            (OpCode::JMP_L, 4) => match read_i32_le(&ins.operands) {
+                Some(r) => r,
+                None => {
+                    index += 1;
+                    continue;
+                }
+            },
+            (OpCode::JMP, 1) => match operand_as_i8(&ins.operands) {
+                Some(b) => b as i32,
+                None => {
+                    index += 1;
+                    continue;
+                }
+            },
+            _ => {
+                index += 1;
+                continue;
+            }
+        };
+
+        let jmp_len = ins.encoded_len();
+        let Ok(jmp_len) = i32::try_from(jmp_len) else {
+            index += 1;
+            continue;
+        };
+        if relative != jmp_len {
+            index += 1;
+            continue;
+        }
+        if index + 1 >= inst.len() {
+            index += 1;
+            continue;
+        }
+        if call_patch_touches_range(patches, index, 1) {
+            index += 1;
+            continue;
+        }
+
+        let prefix_before = prefix_byte_offsets(inst);
+        let del_start = prefix_before[index];
+        let del_len = inst[index].encoded_len();
+        let mut trial = inst.clone();
+        trial.drain(index..index + 1);
+        let prefix_after = prefix_byte_offsets(&trial);
+        if !relayout_branch_operands_after_byte_delete(
+            &mut trial,
+            &prefix_before,
+            &prefix_after,
+            del_start,
+            del_len,
+            index,
+        ) {
+            index += 1;
+            continue;
+        }
+
+        *inst = trial;
+        shift_call_patches_after_remove(patches, index, 1);
+        changed = true;
+        // Re-scan from this index (another redundant jmp may start here).
+        continue;
+    }
+    changed
+}
+
 /// `STLOC n` then `LDLOC n` with nothing else needing slot `n` until the next `STLOC n` is a no-op:
 /// the value is already on stack before the pair (same net stack as after `LDLOC n`).
 fn peel_redundant_stloc_ldloc_pair(
@@ -229,7 +577,15 @@ impl Optimizer for CompiledFunction {
                 peel_redundant_dup_drop(&mut self.instructions, &mut self.call_patches);
             let any_stloc_ldloc_paired =
                 peel_redundant_stloc_ldloc_pair(&mut self.instructions, &mut self.call_patches);
-            if !any_merged && !any_dropped && !any_stloc_ldloc_paired {
+            let any_jmp_to_next =
+                peel_redundant_uncond_jmp_to_next(&mut self.instructions, &mut self.call_patches);
+            let any_shortened = shorten_long_pc_relative_branches(&mut self.instructions);
+            if !any_merged
+                && !any_dropped
+                && !any_stloc_ldloc_paired
+                && !any_jmp_to_next
+                && !any_shortened
+            {
                 break;
             }
         }
@@ -378,5 +734,172 @@ mod tests {
         let mut patches: Vec<(usize, String)> = vec![];
         assert!(!peel_redundant_stloc_ldloc_pair(&mut inst, &mut patches));
         assert_eq!(inst.len(), 4);
+    }
+
+    #[test]
+    fn peel_jmp_l_when_target_is_next_instruction() {
+        let mut inst = vec![
+            Instruction {
+                opcode: OpCode::PUSH0,
+                operands: vec![],
+            },
+            Instruction {
+                opcode: OpCode::JMP_L,
+                operands: 5i32.to_le_bytes().to_vec(),
+            },
+            Instruction {
+                opcode: OpCode::PUSH2,
+                operands: vec![],
+            },
+        ];
+        let mut patches: Vec<(usize, String)> = vec![];
+        assert!(super::peel_redundant_uncond_jmp_to_next(
+            &mut inst,
+            &mut patches
+        ));
+        assert_eq!(inst.len(), 2);
+        assert_eq!(inst[0].opcode, OpCode::PUSH0);
+        assert_eq!(inst[1].opcode, OpCode::PUSH2);
+    }
+
+    #[test]
+    fn peel_redundant_jmp_when_conditional_targeted_its_first_byte() {
+        // Else stub points at the first byte of the redundant `JMP_L` (same layout as IR codegen).
+        let mut inst = vec![
+            Instruction {
+                opcode: OpCode::JMPIFNOT_L,
+                operands: 5i32.to_le_bytes().to_vec(),
+            },
+            Instruction {
+                opcode: OpCode::JMP_L,
+                operands: 5i32.to_le_bytes().to_vec(),
+            },
+            Instruction {
+                opcode: OpCode::PUSHT,
+                operands: vec![],
+            },
+        ];
+        let mut patches: Vec<(usize, String)> = vec![];
+        assert!(super::peel_redundant_uncond_jmp_to_next(
+            &mut inst,
+            &mut patches
+        ));
+        assert_eq!(inst.len(), 2);
+        assert_eq!(inst[0].opcode, OpCode::JMPIFNOT_L);
+        assert_eq!(inst[1].opcode, OpCode::PUSHT);
+        let rel = super::read_i32_le(&inst[0].operands).expect("JMPIFNOT_L");
+        assert_eq!(rel, 5);
+    }
+
+    #[test]
+    fn shorten_jmp_l_to_jmp_when_rel_fits_i8() {
+        let mut inst = vec![
+            Instruction {
+                opcode: OpCode::PUSH0,
+                operands: vec![],
+            },
+            Instruction {
+                opcode: OpCode::JMP_L,
+                operands: 5i32.to_le_bytes().to_vec(),
+            },
+            Instruction {
+                opcode: OpCode::PUSH1,
+                operands: vec![],
+            },
+        ];
+        assert!(super::shorten_long_pc_relative_branches(&mut inst));
+        assert_eq!(inst[1].opcode, OpCode::JMP);
+        assert_eq!(inst[1].encoded_len(), 2);
+    }
+
+    #[test]
+    fn shorten_jmp_l_skipped_when_rel_out_of_i8() {
+        let mut inst = vec![Instruction {
+            opcode: OpCode::JMP_L,
+            operands: 200i32.to_le_bytes().to_vec(),
+        }];
+        assert!(!super::shorten_long_pc_relative_branches(&mut inst));
+        assert_eq!(inst[0].opcode, OpCode::JMP_L);
+    }
+
+    #[test]
+    fn peel_short_jmp_when_target_is_next_instruction() {
+        let mut inst = vec![
+            Instruction {
+                opcode: OpCode::PUSH0,
+                operands: vec![],
+            },
+            Instruction {
+                opcode: OpCode::JMP,
+                operands: vec![2u8],
+            },
+            Instruction {
+                opcode: OpCode::PUSH2,
+                operands: vec![],
+            },
+        ];
+        let mut patches: Vec<(usize, String)> = vec![];
+        assert!(super::peel_redundant_uncond_jmp_to_next(
+            &mut inst,
+            &mut patches
+        ));
+        assert_eq!(inst.len(), 2);
+        assert_eq!(inst[0].opcode, OpCode::PUSH0);
+        assert_eq!(inst[1].opcode, OpCode::PUSH2);
+    }
+
+    #[test]
+    fn peel_jmp_l_to_next_adjusts_earlier_jump_operands() {
+        // Old bytes: PUSH0 @0, JMP_L @1 rel=10 → @11, redundant JMP_L @6 rel=5 → @11, PUSH0 @11.
+        let mut inst = vec![
+            Instruction {
+                opcode: OpCode::PUSH0,
+                operands: vec![],
+            },
+            Instruction {
+                opcode: OpCode::JMP_L,
+                operands: 10i32.to_le_bytes().to_vec(),
+            },
+            Instruction {
+                opcode: OpCode::JMP_L,
+                operands: 5i32.to_le_bytes().to_vec(),
+            },
+            Instruction {
+                opcode: OpCode::PUSH0,
+                operands: vec![],
+            },
+        ];
+        let mut patches: Vec<(usize, String)> = vec![];
+        assert!(super::peel_redundant_uncond_jmp_to_next(
+            &mut inst,
+            &mut patches
+        ));
+        assert_eq!(inst.len(), 3);
+        let rel = super::read_i32_le(&inst[1].operands).expect("JMP_L operands");
+        assert_eq!(rel, 5);
+    }
+
+    #[test]
+    fn peel_jmp_l_to_next_skipped_when_call_patch_points_at_jump() {
+        let mut inst = vec![
+            Instruction {
+                opcode: OpCode::PUSH0,
+                operands: vec![],
+            },
+            Instruction {
+                opcode: OpCode::JMP_L,
+                operands: 5i32.to_le_bytes().to_vec(),
+            },
+            Instruction {
+                opcode: OpCode::PUSH1,
+                operands: vec![],
+            },
+        ];
+        let mut patches = vec![(1usize, "callee".into())];
+        assert!(!super::peel_redundant_uncond_jmp_to_next(
+            &mut inst,
+            &mut patches
+        ));
+        assert_eq!(inst.len(), 3);
     }
 }

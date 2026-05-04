@@ -1,14 +1,24 @@
 //! Codegen from IR (CFG + block-parameter SSA) to NeoVM instructions.
 //!
 //! This module is split into multiple files to keep each concern small:
-//! - `compile`: the main `FunctionIr::compile_ir` entry point
+//! - `compile`: thin `FunctionIr::compile_ir` entry (patch jumps, `INITSLOT`, return `CompliledFunction`)
+//! - `stackify_plan`: spill / slot allocation pre-pass
+//! - `block_emit`: walk basic blocks and emit stackified instructions + terminators
+//! - `branch_emit`: `Branch` terminator lowering (including early-return fold)
 //! - `builder`: instruction emission helpers on `Builder`
 //! - `analysis`: value-use accounting used by the stackifier
 //! - `context`: shared immutable/mutable context structs for the above
+//! - `compile_tests` (cfg test): `compile_function` / `compile_ir` branch lowering smoke tests
 
 mod analysis;
+mod block_emit;
+mod branch_emit;
 mod builder;
 mod compile;
+mod stackify_plan;
+
+#[cfg(test)]
+mod tests;
 
 use std::collections::{HashMap, HashSet};
 

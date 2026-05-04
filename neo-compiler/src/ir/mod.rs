@@ -316,6 +316,9 @@ impl Instr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Terminator {
+    /// Placeholder for a new [`BasicBlock`] before its terminator is set. Open exits are sealed in
+    /// [`lower_function_to_ir`](crate::ir::lower::lower_function_to_ir) when needed.
+    Unset,
     Return(Option<ValueRef>),
     Jump {
         target: BlockId,

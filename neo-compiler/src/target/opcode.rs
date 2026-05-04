@@ -949,6 +949,44 @@ pub enum OpCode {
     ASSERTMSG = 0xE1,
 }
 
+impl OpCode {
+    pub fn is_jump(&self) -> bool {
+        (*self as u8) >= (Self::JMP as u8) && (*self as u8) <= (Self::JMPLE_L as u8)
+    }
+
+    pub fn is_jump_short(&self) -> bool {
+        self.is_jump() && (*self as u8 & 0x01) == 0
+    }
+
+    pub fn is_jump_long(&self) -> bool {
+        self.is_jump() && (*self as u8 & 0x00) != 1
+    }
+
+    pub fn is_call(&self) -> bool {
+        (*self as u8) >= (Self::CALL as u8) && (*self as u8) <= (Self::CALL_L as u8)
+    }
+
+    pub fn is_try(&self) -> bool {
+        (*self as u8) >= (Self::TRY as u8) && (*self as u8) <= (Self::TRY_L as u8)
+    }
+
+    pub fn is_endtry(&self) -> bool {
+        (*self as u8) == (Self::ENDTRY as u8) || (*self as u8) == (Self::ENDTRY_L as u8)
+    }
+
+    pub fn is_endfinally(&self) -> bool {
+        (*self as u8) == (Self::ENDFINALLY as u8)
+    }
+
+    pub fn is_change_pc_short(&self) -> bool {
+        self.is_jump_short() || matches!(*self, OpCode::CALL | OpCode::TRY | OpCode::ENDTRY)
+    }
+
+    pub fn is_change_pc_long(&self) -> bool {
+        self.is_jump_long() || matches!(*self, OpCode::CALL_L | OpCode::TRY_L | OpCode::ENDTRY_L)
+    }
+}
+
 pub trait ToOpCode {
     fn to_op_code(&self) -> OpCode;
 }
