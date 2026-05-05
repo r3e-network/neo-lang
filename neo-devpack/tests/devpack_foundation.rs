@@ -789,6 +789,25 @@ fn testing_native_mocks_execute_typed_invocations() {
 
     assert_eq!(mocks.invoke(&balance).unwrap(), NativeValue::Integer(42));
 
+    let bob_balance = GasToken::balance_of(
+        NativeValue::hash160("0x2222222222222222222222222222222222222222").unwrap(),
+    )
+    .expect("GAS balanceOf bob invocation");
+    mocks.when_args(
+        "GAS",
+        "balanceOf",
+        vec![account.clone()],
+        NativeValue::Integer(100),
+    );
+    mocks.when_args(
+        "GAS",
+        "balanceOf",
+        vec![NativeValue::hash160("0x2222222222222222222222222222222222222222").unwrap()],
+        NativeValue::Integer(7),
+    );
+    assert_eq!(mocks.invoke(&balance).unwrap(), NativeValue::Integer(100));
+    assert_eq!(mocks.invoke(&bob_balance).unwrap(), NativeValue::Integer(7));
+
     let missing = mocks
         .invoke(&transfer)
         .expect_err("missing mock should fail");

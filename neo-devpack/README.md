@@ -35,7 +35,7 @@ It is modeled after the responsibilities of `neo-project/neo-devpack-dotnet`, ad
 - Compiler integration: `neo-compiler` consumes this catalog for `neo-devpack` import validation, runtime/storage/contract/crypto/iterator syscall imports, and NEP-17/NEP-11 `supportedStandards` ABI validation.
 - Template compile checks: all built-in `.neo` templates are parsed, type checked, code generated, and converted to manifests in the compiler test suite.
 - Testing storage fixtures support deterministic `FindOptions` queries with key, value, and key-value result shapes.
-- Testing helpers include `NativeMockRegistry` for deterministic native-contract call responses with return-type validation.
+- Testing helpers include `NativeMockRegistry` for deterministic native-contract call responses with return-type validation and optional exact-argument matching.
 
 ## Compiler Imports
 
@@ -167,6 +167,8 @@ let balance = GasToken::balance_of(NativeValue::address("NTRAJ9EEjHFHhHZvMKEKfkc
 let mut ctx = DevPackTestContext::new("0x0123456789abcdef0123456789abcdef01234567");
 ctx.native.when("GAS", "balanceOf", NativeValue::Integer(100));
 assert_eq!(ctx.native.invoke(&balance)?, NativeValue::Integer(100));
+ctx.native.when_args("GAS", "balanceOf", balance.args.clone(), NativeValue::Integer(101));
+assert_eq!(ctx.native.invoke(&balance)?, NativeValue::Integer(101));
 
 ctx.storage.put("balances:alice", [100]);
 let found = ctx.storage.find(

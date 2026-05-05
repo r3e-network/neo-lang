@@ -143,6 +143,15 @@ pub enum GasError {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NativeMockRegistry {
     responses: BTreeMap<(String, String), NativeValue>,
+    argument_responses: Vec<NativeArgumentMock>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct NativeArgumentMock {
+    contract: String,
+    method: String,
+    args: Vec<NativeValue>,
+    response: NativeValue,
 }
 
 impl NativeMockRegistry {
@@ -161,19 +170,43 @@ impl NativeMockRegistry {
         self
     }
 
+    pub fn when_args(
+        &mut self,
+        contract: impl Into<String>,
+        method: impl Into<String>,
+        args: Vec<NativeValue>,
+        response: NativeValue,
+    ) -> &mut Self {
+        self.argument_responses.push(NativeArgumentMock {
+            contract: contract.into(),
+            method: method.into(),
+            args,
+            response,
+        });
+        self
+    }
+
     pub fn invoke(&self, invocation: &NativeInvocation) -> Result<NativeValue, NativeMockError> {
         let key = (
             invocation.contract.name.to_string(),
             invocation.method.name.clone(),
         );
-        let response =
-            self.responses
-                .get(&key)
-                .cloned()
-                .ok_or_else(|| NativeMockError::MissingMock {
-                    contract: invocation.contract.name.to_string(),
-                    method: invocation.method.name.clone(),
-                })?;
+        let response = self
+            .argument_responses
+            .iter()
+            .rev()
+            .find(|mock| {
+                mock.contract == invocation.contract.name
+                    && mock.method == invocation.method.name
+                    && mock.args == invocation.args
+            })
+            .map(|mock| &mock.response)
+            .or_else(|| self.responses.get(&key))
+            .cloned()
+            .ok_or_else(|| NativeMockError::MissingMock {
+                contract: invocation.contract.name.to_string(),
+                method: invocation.method.name.clone(),
+            })?;
         let actual = response.ty();
         let expected = invocation.method.return_type;
         if !native_mock_type_matches(actual, expected) {

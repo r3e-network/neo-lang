@@ -44,6 +44,7 @@ Recently fixed in active PR work:
 - ContractManagement, Ledger, Policy, RoleManagement, and Oracle native wrappers for typed invocation helpers across the remaining Neo N3 native contracts.
 - Minimal deterministic script, NEF, and manifest golden snapshot coverage for compiler artifact regression detection.
 - Devpack native-call mock registry for deterministic native contract responses in fast unit tests.
+- Native-call mocks support exact-argument matching for account-specific native test responses.
 - Typed and validated Neo N3 `Storage.Find` options for devpack framework calls.
 - Devpack storage fixture `FindOptions` query support for deterministic key/value storage iteration tests.
 - README attribute mismatch for implemented attributes.
