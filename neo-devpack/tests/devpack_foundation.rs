@@ -9,7 +9,7 @@ use neo_devpack::native::{
 use neo_devpack::standards::{standard_index, validate_standard, ContractShape, NepStandard};
 use neo_devpack::templates::{render_template, TemplateKind, TemplateOptions};
 use neo_devpack::testing::{DevPackTestContext, GasError, NativeMockRegistry};
-use neo_devpack::types::{FunctionSpec, NeoType, ParameterSpec};
+use neo_devpack::types::{FindOptions, FunctionSpec, NeoType, ParameterSpec};
 
 #[test]
 fn api_catalog_exposes_core_framework_and_native_contracts() {
@@ -333,6 +333,42 @@ fn framework_helpers_build_typed_syscall_invocations() {
     )
     .expect_err("Storage.put should validate byte-array keys");
     assert!(bad_put.to_string().contains("expected `ByteArray`"));
+}
+
+#[test]
+fn find_options_encode_and_validate_storage_find_flags() {
+    assert_eq!(FindOptions::NONE.neo_bits(), 0);
+    assert_eq!(
+        FindOptions::KEYS_ONLY
+            .with(FindOptions::REMOVE_PREFIX)
+            .unwrap()
+            .neo_bits(),
+        0x03
+    );
+
+    let find = Storage::find(
+        FrameworkValue::ByteArray(vec![b'p']),
+        FindOptions::DESERIALIZE_VALUES
+            .with(FindOptions::PICK_FIELD_0)
+            .unwrap(),
+    )
+    .expect("Storage.find accepts typed FindOptions");
+    assert_eq!(
+        find.argument_types(),
+        vec![NeoType::ByteArray, NeoType::Integer]
+    );
+
+    let values_and_keys = FindOptions::KEYS_ONLY
+        .with(FindOptions::VALUES_ONLY)
+        .expect_err("KeysOnly and ValuesOnly are mutually exclusive");
+    assert!(values_and_keys.to_string().contains("KeysOnly"));
+
+    let pick_without_deserialize = FindOptions::PICK_FIELD_1
+        .validate()
+        .expect_err("PickField requires DeserializeValues");
+    assert!(pick_without_deserialize
+        .to_string()
+        .contains("DeserializeValues"));
 }
 
 #[test]

@@ -26,6 +26,7 @@ It is modeled after the responsibilities of `neo-project/neo-devpack-dotnet`, ad
 - `ContractManagement`, `Ledger`, `Policy`, `RoleManagement`, and `Oracle` helper wrappers cover the remaining Neo N3 native contracts with typed arity and argument validation.
 - `NativeValue::address` validates Neo N3 Base58Check addresses, version `0x35`, and checksums before converting to `Hash160`.
 - `NativeValue` constructors validate hash160, hash256, public key, signature, byte array, and buffer inputs before they reach native-call builders.
+- `FindOptions` encodes and validates Neo N3 `Storage.Find` flags such as `KeysOnly`, `RemovePrefix`, `DeserializeValues`, and `PickField0`.
 - Standards index: NEP-11, NEP-17, NEP-24, NEP-26, NEP-27, NEP-29, NEP-30, NEP-31.
 - Deep validators: NEP-17 and NEP-11 ABI/event shape, plus NEP-26/NEP-27 payment receiver callback shape.
 - Templates: hello world, NEP-17 token, NEP-11 NFT, storage map, oracle consumer, upgradeable admin.
@@ -93,6 +94,7 @@ use neo_devpack::native::{
 };
 use neo_devpack::standards::{validate_standard, ContractShape, NepStandard};
 use neo_devpack::testing::DevPackTestContext;
+use neo_devpack::types::FindOptions;
 
 let catalog = ApiCatalog::neo_n3();
 let neo = catalog.native_contract("NEO").expect("NEO native contract");
@@ -135,6 +137,10 @@ let storage_put = Storage::put(
     FrameworkValue::ByteArray(vec![b'v']),
 )?;
 assert_eq!(storage_put.function.name, "put");
+
+let find_options = FindOptions::DESERIALIZE_VALUES.with(FindOptions::PICK_FIELD_0)?;
+let storage_find = Storage::find(FrameworkValue::ByteArray(vec![b'p']), find_options)?;
+assert_eq!(storage_find.function.name, "find");
 
 let low_level_call = Contract::call(
     FrameworkValue::from(NativeValue::address("NTRAJ9EEjHFHhHZvMKEKfkceg5V9ppx5ZP")?),
