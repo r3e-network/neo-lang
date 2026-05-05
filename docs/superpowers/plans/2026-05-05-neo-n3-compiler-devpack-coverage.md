@@ -33,6 +33,7 @@ Recently fixed in active PR work:
 - Contract manifest attributes for author, standards, permissions, trusts, and groups.
 - Compiler-side NEP-17/NEP-11 compatibility validation for `supportedStandards`.
 - Compiler compile checks for all built-in devpack templates.
+- GitHub Actions CI and docs examples marked with `neo,compile`.
 - README attribute mismatch for implemented attributes.
 
 ## Primary Gaps
@@ -167,11 +168,11 @@ Acceptance:
 
 ## Immediate Next PRs
 
-1. CI and docs-example compile checks.
-2. Manifest attributes and supported standards.
-3. Complete NEP-17 receiver callback coverage and witness/address validation.
-4. Typed Runtime/Contract/Storage devpack module design and first implementation.
-5. Native contract wrapper generation strategy and StdLib/CryptoLib pilot.
+1. Complete NEP-17 receiver callback coverage and witness/address validation.
+2. Typed Runtime/Contract/Storage devpack module design and first implementation.
+3. Native contract wrapper generation strategy and StdLib/CryptoLib pilot.
+4. Golden NEF/manifest snapshots and debug artifact planning.
+5. VM execution harness spike for compiled scripts.
 
 ## Source References
 

@@ -29,7 +29,7 @@ It is modeled after the responsibilities of `neo-project/neo-devpack-dotnet`, ad
 
 The compiler currently accepts direct framework imports:
 
-```neo
+```neo,compile
 import rt from "neo-devpack/runtime";
 import storage from "neo-devpack";
 import crypto from "neo-devpack";

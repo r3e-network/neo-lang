@@ -587,4 +587,52 @@ mod tests {
                 .unwrap_or_else(|err| panic!("{kind:?} failed manifest generation: {err}"));
         }
     }
+
+    #[test]
+    fn docs_marked_neo_examples_compile_to_manifest() {
+        let docs = [
+            ("README.md", include_str!("../../README.md")),
+            (
+                "neo-devpack/README.md",
+                include_str!("../../neo-devpack/README.md"),
+            ),
+        ];
+        let mut checked = 0usize;
+        for (path, contents) in docs {
+            for (index, source) in compile_marked_neo_blocks(contents).into_iter().enumerate() {
+                checked += 1;
+                let ast = parse_source_file(&source)
+                    .unwrap_or_else(|err| panic!("{path} block {index} failed parse: {err:?}"));
+                let compiled = Codegen::new()
+                    .codegen_source_file(&ast)
+                    .unwrap_or_else(|err| panic!("{path} block {index} failed codegen: {err}"));
+                build_manifest(&ast, &compiled).unwrap_or_else(|err| {
+                    panic!("{path} block {index} failed manifest generation: {err}")
+                });
+            }
+        }
+        assert!(
+            checked > 0,
+            "expected at least one `neo,compile` docs block"
+        );
+    }
+
+    fn compile_marked_neo_blocks(markdown: &str) -> Vec<String> {
+        let mut blocks = Vec::new();
+        let mut current: Option<String> = None;
+        for line in markdown.lines() {
+            if let Some(block) = current.as_mut() {
+                if line.trim() == "```" {
+                    blocks.push(std::mem::take(block));
+                    current = None;
+                } else {
+                    block.push_str(line);
+                    block.push('\n');
+                }
+            } else if line.trim() == "```neo,compile" {
+                current = Some(String::new());
+            }
+        }
+        blocks
+    }
 }

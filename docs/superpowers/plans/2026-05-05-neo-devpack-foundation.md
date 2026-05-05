@@ -211,3 +211,18 @@
 - [x] Allow `buffer` map keys for NEP-11 storage patterns.
 - [x] Allow concrete values to flow into `any` containers and allow `runtime.checkWitness(hash160)`.
 - [x] Document template compile coverage and the new ABI-facing `iterator` type.
+
+### Task 16: CI and Docs Example Compile Checks
+
+**Files:**
+- Create: `.github/workflows/ci.yml`
+- Modify: `neo-compiler/src/build_target.rs`
+- Modify: `README.md`
+- Modify: `neo-devpack/README.md`
+- Modify: `docs/superpowers/plans/2026-05-05-neo-n3-compiler-devpack-coverage.md`
+
+- [x] Add a red compiler test proving no documentation `.neo` examples are currently compile-checked.
+- [x] Introduce `neo,compile` fenced code blocks for full documentation examples that should build.
+- [x] Parse, type-check, codegen, and manifest-check every marked docs example in the compiler test suite.
+- [x] Add GitHub Actions CI for format, workspace tests, clippy, and whitespace checks.
+- [x] Record CI/docs-example coverage in the roadmap.

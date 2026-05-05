@@ -5,7 +5,7 @@ It is a high-level programming language that is designed to be easy to use.
 
 ## Quick Start
 
-```
+```neo,compile
 // Define a contract. Any `neo-lang` program must be a(only one) contract.
 #[author("AuthorName")]
 #[version("0.0.1")]
@@ -22,10 +22,12 @@ contract Example {
     // Declare a map property.
     map[hash160, int] balances;
 
+    event Transfer(hash160 source, hash160 dest, int amount);
+
     // Declare a method
     bool transfer(hash160 source, hash160 dest, int amount) {
         assert(amount > 0, "Amount must be greater than 0");
-        // ...
+        emit Transfer(source, dest, amount);
         return true; // or return false;
     }
 }
