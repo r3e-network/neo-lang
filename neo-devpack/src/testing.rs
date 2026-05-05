@@ -1,4 +1,8 @@
 use std::collections::BTreeMap;
+use std::fmt;
+
+use crate::native::{NativeInvocation, NativeValue};
+use crate::types::NeoType;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StorageFixture {
@@ -87,6 +91,106 @@ pub enum GasError {
     Overflow,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct NativeMockRegistry {
+    responses: BTreeMap<(String, String), NativeValue>,
+}
+
+impl NativeMockRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn when(
+        &mut self,
+        contract: impl Into<String>,
+        method: impl Into<String>,
+        response: NativeValue,
+    ) -> &mut Self {
+        self.responses
+            .insert((contract.into(), method.into()), response);
+        self
+    }
+
+    pub fn invoke(&self, invocation: &NativeInvocation) -> Result<NativeValue, NativeMockError> {
+        let key = (
+            invocation.contract.name.to_string(),
+            invocation.method.name.clone(),
+        );
+        let response =
+            self.responses
+                .get(&key)
+                .cloned()
+                .ok_or_else(|| NativeMockError::MissingMock {
+                    contract: invocation.contract.name.to_string(),
+                    method: invocation.method.name.clone(),
+                })?;
+        let actual = response.ty();
+        let expected = invocation.method.return_type;
+        if !native_mock_type_matches(actual, expected) {
+            return Err(NativeMockError::ReturnTypeMismatch {
+                contract: invocation.contract.name.to_string(),
+                method: invocation.method.name.clone(),
+                expected,
+                actual,
+            });
+        }
+        Ok(response)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NativeMockError {
+    MissingMock {
+        contract: String,
+        method: String,
+    },
+    ReturnTypeMismatch {
+        contract: String,
+        method: String,
+        expected: NeoType,
+        actual: NeoType,
+    },
+}
+
+impl fmt::Display for NativeMockError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingMock { contract, method } => {
+                write!(f, "no native mock registered for {contract}.{method}")
+            }
+            Self::ReturnTypeMismatch {
+                contract,
+                method,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "native mock {contract}.{method} return type mismatch: expected `{expected:?}`, got `{actual:?}`"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for NativeMockError {}
+
+fn native_mock_type_matches(actual: NeoType, expected: NeoType) -> bool {
+    expected == NeoType::Any
+        || actual == expected
+        || matches!(
+            (actual, expected),
+            (NeoType::Any, NeoType::Void)
+                | (
+                    NeoType::Hash160
+                        | NeoType::Hash256
+                        | NeoType::Buffer
+                        | NeoType::PublicKey
+                        | NeoType::Signature,
+                    NeoType::ByteArray
+                )
+        )
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GasMeter {
     budget: u64,
@@ -127,6 +231,7 @@ pub struct DevPackTestContext {
     pub storage: StorageFixture,
     pub notifications: NotificationRecorder,
     pub gas: GasMeter,
+    pub native: NativeMockRegistry,
 }
 
 impl DevPackTestContext {
@@ -135,6 +240,7 @@ impl DevPackTestContext {
             storage: StorageFixture::new(contract_hash),
             notifications: NotificationRecorder::new(),
             gas: GasMeter::new(100_000_000),
+            native: NativeMockRegistry::new(),
         }
     }
 }

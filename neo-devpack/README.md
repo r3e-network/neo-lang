@@ -13,7 +13,7 @@ It is modeled after the responsibilities of `neo-project/neo-devpack-dotnet`, ad
 - `standards`: NEP standard index and compatibility validators.
 - `analyzer`: actionable findings built on top of standards validation.
 - `templates`: built-in `.neo` contract templates.
-- `testing`: fast in-memory storage, notification, and gas test primitives.
+- `testing`: fast in-memory storage, notification, gas, and native-call mock test primitives.
 
 ## Included Foundation Coverage
 
@@ -33,6 +33,7 @@ It is modeled after the responsibilities of `neo-project/neo-devpack-dotnet`, ad
 - Analyzer findings flag missing or malformed NEP-26/NEP-27 receiver callbacks before contracts are used as token recipients.
 - Compiler integration: `neo-compiler` consumes this catalog for `neo-devpack` import validation, runtime/storage/contract/crypto/iterator syscall imports, and NEP-17/NEP-11 `supportedStandards` ABI validation.
 - Template compile checks: all built-in `.neo` templates are parsed, type checked, code generated, and converted to manifests in the compiler test suite.
+- Testing helpers include `NativeMockRegistry` for deterministic native-contract call responses with return-type validation.
 
 ## Compiler Imports
 
@@ -91,6 +92,7 @@ use neo_devpack::native::{
     CryptoLib, GasToken, NativeContract, NativeValue, Oracle, Policy, StdLib,
 };
 use neo_devpack::standards::{validate_standard, ContractShape, NepStandard};
+use neo_devpack::testing::DevPackTestContext;
 
 let catalog = ApiCatalog::neo_n3();
 let neo = catalog.native_contract("NEO").expect("NEO native contract");
@@ -153,6 +155,11 @@ let oracle_request = Oracle::request(
     10_000_000,
 )?;
 assert_eq!(oracle_request.method.name, "request");
+
+let balance = GasToken::balance_of(NativeValue::address("NTRAJ9EEjHFHhHZvMKEKfkceg5V9ppx5ZP")?)?;
+let mut ctx = DevPackTestContext::new("0x0123456789abcdef0123456789abcdef01234567");
+ctx.native.when("GAS", "balanceOf", NativeValue::Integer(100));
+assert_eq!(ctx.native.invoke(&balance)?, NativeValue::Integer(100));
 ```
 
 ## Current Limits

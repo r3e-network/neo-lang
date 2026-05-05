@@ -8,7 +8,7 @@ use neo_devpack::native::{
 };
 use neo_devpack::standards::{standard_index, validate_standard, ContractShape, NepStandard};
 use neo_devpack::templates::{render_template, TemplateKind, TemplateOptions};
-use neo_devpack::testing::{DevPackTestContext, GasError};
+use neo_devpack::testing::{DevPackTestContext, GasError, NativeMockRegistry};
 use neo_devpack::types::{FunctionSpec, NeoType, ParameterSpec};
 
 #[test]
@@ -679,4 +679,36 @@ fn testing_context_tracks_storage_notifications_and_gas() {
         ctx.gas.charge(ctx.gas.remaining() + 1),
         Err(GasError::BudgetExceeded)
     );
+}
+
+#[test]
+fn testing_native_mocks_execute_typed_invocations() {
+    let account = NativeValue::hash160("0x1111111111111111111111111111111111111111").unwrap();
+    let balance = GasToken::balance_of(account.clone()).expect("GAS balanceOf invocation");
+    let transfer = GasToken::transfer(
+        account.clone(),
+        NativeValue::hash160("0x2222222222222222222222222222222222222222").unwrap(),
+        1,
+        NativeValue::null(),
+    )
+    .expect("GAS transfer invocation");
+
+    let mut mocks = NativeMockRegistry::new();
+    mocks.when("GAS", "balanceOf", NativeValue::Integer(42));
+
+    assert_eq!(mocks.invoke(&balance).unwrap(), NativeValue::Integer(42));
+
+    let missing = mocks
+        .invoke(&transfer)
+        .expect_err("missing mock should fail");
+    assert!(missing.to_string().contains("no native mock"));
+
+    let mut ctx = DevPackTestContext::new("0xabc");
+    ctx.native
+        .when("GAS", "balanceOf", NativeValue::String("bad".into()));
+    let type_error = ctx
+        .native
+        .invoke(&balance)
+        .expect_err("mock response should match native return type");
+    assert!(type_error.to_string().contains("expected `Integer`"));
 }

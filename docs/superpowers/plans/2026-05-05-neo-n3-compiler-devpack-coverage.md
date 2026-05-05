@@ -43,6 +43,7 @@ Recently fixed in active PR work:
 - NEO/GAS native token wrappers for typed balance, transfer, supply, and governance invocation helpers.
 - ContractManagement, Ledger, Policy, RoleManagement, and Oracle native wrappers for typed invocation helpers across the remaining Neo N3 native contracts.
 - Minimal deterministic script, NEF, and manifest golden snapshot coverage for compiler artifact regression detection.
+- Devpack native-call mock registry for deterministic native contract responses in fast unit tests.
 - README attribute mismatch for implemented attributes.
 
 ## Primary Gaps
