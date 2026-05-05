@@ -240,3 +240,17 @@
 - [x] Emit receiver callbacks through the `neo-devpack/contract` module with explicit `CallFlags.All` (`15`) instead of the legacy read-only `runtime.contractCall` escape hatch.
 - [x] Add explicit devpack imports to templates that use runtime or contract APIs.
 - [x] Re-run targeted template rendering and compiler template-manifest checks.
+
+### Task 18: Neo N3 Address Validation Helper
+
+**Files:**
+- Modify: `neo-devpack/Cargo.toml`
+- Modify: `neo-devpack/src/native.rs`
+- Modify: `neo-devpack/tests/devpack_foundation.rs`
+- Modify: `neo-devpack/README.md`
+- Modify: `docs/superpowers/plans/2026-05-05-neo-n3-compiler-devpack-coverage.md`
+
+- [x] Add a red native-value test for accepting a Neo N3 Base58Check address as a `Hash160` native argument.
+- [x] Validate Base58 alphabet, payload length, Neo N3 address version `0x35`, and checksum failures with actionable errors.
+- [x] Decode valid addresses into normalized `0x`-prefixed hash160 values for native contract calls.
+- [x] Document address usage in the devpack README.

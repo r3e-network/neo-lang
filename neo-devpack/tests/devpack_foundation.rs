@@ -107,6 +107,35 @@ fn native_contract_bindings_validate_arguments_and_surface_call_metadata() {
 }
 
 #[test]
+fn native_value_accepts_neo_n3_addresses_as_hash160() {
+    let account =
+        NativeValue::address("NTRAJ9EEjHFHhHZvMKEKfkceg5V9ppx5ZP").expect("valid Neo N3 address");
+    assert_eq!(
+        account,
+        NativeValue::Hash160("0x524e37b70139c896ebd54a8648d3fa786b264876".into())
+    );
+
+    let balance = NativeContract::Gas
+        .call("balanceOf")
+        .arg(account)
+        .build()
+        .expect("address should satisfy hash160 native parameter");
+    assert_eq!(balance.argument_types(), vec![NeoType::Hash160]);
+
+    let checksum_error = NativeValue::address("NTRAJ9EEjHFHhHZvMKEKfkceg5V9ppx5ZQ")
+        .expect_err("mutated address checksum should fail");
+    assert!(checksum_error.to_string().contains("checksum"));
+
+    let version_error = NativeValue::address("1BoatSLRHtKNngkdXEeobR76b53LETtpyT")
+        .expect_err("non-Neo address version should fail");
+    assert!(version_error.to_string().contains("address version"));
+
+    let base58_error =
+        NativeValue::address("N0").expect_err("invalid Base58 characters should fail");
+    assert!(base58_error.to_string().contains("Base58"));
+}
+
+#[test]
 fn manifest_builder_serializes_neo_n3_fields() {
     let manifest = ManifestBuilder::new("Token")
         .supported_standard("NEP-17")

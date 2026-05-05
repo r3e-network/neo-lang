@@ -19,6 +19,7 @@ It is modeled after the responsibilities of `neo-project/neo-devpack-dotnet`, ad
 - Framework modules: Runtime, Storage, Contract, Crypto, Iterator.
 - Native contracts: ContractManagement, StdLib, CryptoLib, Ledger, NEO, GAS, Policy, RoleManagement, Oracle.
 - Typed native-contract invocation builders with arity/type validation.
+- `NativeValue::address` validates Neo N3 Base58Check addresses, version `0x35`, and checksums before converting to `Hash160`.
 - Standards index: NEP-11, NEP-17, NEP-24, NEP-26, NEP-27, NEP-29, NEP-30, NEP-31.
 - Deep validators: NEP-17 and NEP-11 ABI/event shape.
 - Templates: hello world, NEP-17 token, NEP-11 NFT, storage map, oracle consumer, upgradeable admin.
@@ -89,9 +90,11 @@ let shape = ContractShape::new("Token").supported_standard(NepStandard::Nep17);
 let errors = validate_standard(NepStandard::Nep17, &shape).unwrap_err();
 assert!(errors.iter().any(|error| error.to_string().contains("transfer")));
 
+let alice = NativeValue::address("NTRAJ9EEjHFHhHZvMKEKfkceg5V9ppx5ZP")?;
+
 let transfer = NativeContract::Gas
     .call("transfer")
-    .arg(NativeValue::hash160("0x1111111111111111111111111111111111111111")?)
+    .arg(alice)
     .arg(NativeValue::hash160("0x2222222222222222222222222222222222222222")?)
     .arg(NativeValue::integer(1))
     .arg(NativeValue::null())
