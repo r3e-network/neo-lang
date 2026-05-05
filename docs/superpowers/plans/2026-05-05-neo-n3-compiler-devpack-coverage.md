@@ -36,6 +36,7 @@ Recently fixed in active PR work:
 - GitHub Actions CI and docs examples marked with `neo,compile`.
 - NEP-17 starter template sender witness checks and `onNEP17Payment` callback scaffolding through typed `Contract.Call` flags.
 - Devpack native-value helper for validating Neo N3 Base58Check addresses and converting them into `Hash160` values for native calls.
+- Devpack native-value constructors for validated hash256, public key, signature, byte array, and buffer values.
 - README attribute mismatch for implemented attributes.
 
 ## Primary Gaps
@@ -59,7 +60,7 @@ Recently fixed in active PR work:
    `import name from "library";` appears in AST and docs, but there is no package resolver, multi-file compilation, dependency graph, export model, namespace hygiene, or artifact packaging.
 
 7. Type system needs Neo-specific value types.
-   `hash160`, `hash256`, public keys, signatures, byte strings, addresses, nullable values, iterators, storage contexts, contract/state structures, and call flags need precise representations and validation. Hash/address literal handling should be made explicit.
+   `hash160`, `hash256`, public keys, signatures, byte strings, and Neo N3 addresses now have devpack-side native-value validation, but compiler literals, nullable values, iterators, storage contexts, contract/state structures, and call flags still need precise source-level representations. Hash/address literal handling should be made explicit in the language.
 
 8. Testing is useful but not complete.
    Local unit tests pass, but there is no golden corpus for NEF/manifest, no fixture-based standard contract tests, no cross-check against NeoVM execution, no property/fuzz tests for bytecode layout, no gas regression tests, no integration tests with Neo Express/private net, and no docs-example compile checks.

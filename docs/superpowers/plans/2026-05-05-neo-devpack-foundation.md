@@ -254,3 +254,16 @@
 - [x] Validate Base58 alphabet, payload length, Neo N3 address version `0x35`, and checksum failures with actionable errors.
 - [x] Decode valid addresses into normalized `0x`-prefixed hash160 values for native contract calls.
 - [x] Document address usage in the devpack README.
+
+### Task 19: Native Value Byte-Type Constructors
+
+**Files:**
+- Modify: `neo-devpack/src/native.rs`
+- Modify: `neo-devpack/tests/devpack_foundation.rs`
+- Modify: `neo-devpack/README.md`
+- Modify: `docs/superpowers/plans/2026-05-05-neo-n3-compiler-devpack-coverage.md`
+
+- [x] Add a red test for validated `hash256`, `public_key`, `signature`, `byte_array`, and `buffer` native values.
+- [x] Validate fixed hash/signature byte lengths and public key compressed/uncompressed length plus prefix.
+- [x] Decode variable-length byte arrays and buffers from `0x`-prefixed or raw hex input.
+- [x] Surface actionable error text for malformed hex and public keys.

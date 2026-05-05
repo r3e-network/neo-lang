@@ -136,6 +136,39 @@ fn native_value_accepts_neo_n3_addresses_as_hash160() {
 }
 
 #[test]
+fn native_values_validate_common_neo_byte_types() {
+    let hash256_hex = format!("0x{}", "ff".repeat(32));
+    let hash256 = NativeValue::hash256(&hash256_hex).expect("valid hash256");
+    assert_eq!(hash256.ty(), NeoType::Hash256);
+
+    let public_key = NativeValue::public_key(
+        "0x021111111111111111111111111111111111111111111111111111111111111111",
+    )
+    .expect("valid compressed public key");
+    assert_eq!(public_key.ty(), NeoType::PublicKey);
+
+    let signature_hex = format!("0x{}", "aa".repeat(64));
+    let signature = NativeValue::signature(&signature_hex).expect("valid signature");
+    assert_eq!(signature.ty(), NeoType::Signature);
+
+    assert_eq!(
+        NativeValue::byte_array("0xdeadbeef").expect("valid byte array"),
+        NativeValue::ByteArray(vec![0xde, 0xad, 0xbe, 0xef])
+    );
+    assert_eq!(
+        NativeValue::buffer("0xcafe").expect("valid buffer"),
+        NativeValue::Buffer(vec![0xca, 0xfe])
+    );
+
+    let public_key_error =
+        NativeValue::public_key("0x0211").expect_err("short public key should fail");
+    assert!(public_key_error.to_string().contains("public key"));
+
+    let hex_error = NativeValue::byte_array("0xabc").expect_err("odd hex length should fail");
+    assert!(hex_error.to_string().contains("hex"));
+}
+
+#[test]
 fn manifest_builder_serializes_neo_n3_fields() {
     let manifest = ManifestBuilder::new("Token")
         .supported_standard("NEP-17")

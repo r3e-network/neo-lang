@@ -76,9 +76,41 @@ impl NativeValue {
         Ok(Self::Hash160(normalize_hex(value)))
     }
 
+    pub fn hash256(value: &str) -> Result<Self, NativeBindingError> {
+        validate_hex_bytes(value, 32)?;
+        Ok(Self::Hash256(normalize_hex(value)))
+    }
+
     pub fn address(value: &str) -> Result<Self, NativeBindingError> {
         let script_hash = decode_neo_n3_address(value)?;
         Ok(Self::Hash160(hex_string(&script_hash)))
+    }
+
+    pub fn byte_array(value: &str) -> Result<Self, NativeBindingError> {
+        Ok(Self::ByteArray(decode_hex(value)?))
+    }
+
+    pub fn buffer(value: &str) -> Result<Self, NativeBindingError> {
+        Ok(Self::Buffer(decode_hex(value)?))
+    }
+
+    pub fn public_key(value: &str) -> Result<Self, NativeBindingError> {
+        let bytes = decode_hex(value)?;
+        let valid = matches!(
+            (bytes.len(), bytes.first().copied()),
+            (33, Some(0x02 | 0x03)) | (65, Some(0x04))
+        );
+        if !valid {
+            return Err(NativeBindingError::InvalidPublicKey {
+                actual_bytes: bytes.len(),
+                first_byte: bytes.first().copied(),
+            });
+        }
+        Ok(Self::PublicKey(bytes))
+    }
+
+    pub fn signature(value: &str) -> Result<Self, NativeBindingError> {
+        Ok(Self::Signature(decode_fixed_hex(value, 64)?))
     }
 
     pub fn ty(&self) -> NeoType {
@@ -190,6 +222,13 @@ pub enum NativeBindingError {
         expected_bytes: usize,
         actual_nibbles: usize,
     },
+    InvalidHexString {
+        actual_nibbles: usize,
+    },
+    InvalidPublicKey {
+        actual_bytes: usize,
+        first_byte: Option<u8>,
+    },
     InvalidBase58Character {
         character: char,
         index: usize,
@@ -238,6 +277,22 @@ impl fmt::Display for NativeBindingError {
                 f,
                 "expected {expected_bytes} byte hex value, got {actual_nibbles} hex nibbles"
             ),
+            Self::InvalidHexString { actual_nibbles } => write!(
+                f,
+                "invalid hex string with {actual_nibbles} hex nibbles"
+            ),
+            Self::InvalidPublicKey {
+                actual_bytes,
+                first_byte,
+            } => {
+                let first_byte = first_byte
+                    .map(|byte| format!("0x{byte:02x}"))
+                    .unwrap_or_else(|| "none".to_string());
+                write!(
+                    f,
+                    "public key must be 33-byte compressed key with prefix 0x02/0x03 or 65-byte uncompressed key with prefix 0x04, got {actual_bytes} byte(s) with first byte {first_byte}"
+                )
+            }
             Self::InvalidBase58Character { character, index } => {
                 write!(f, "invalid Base58 character `{character}` at index {index}")
             }
@@ -298,6 +353,37 @@ fn validate_hex_bytes(value: &str, expected_bytes: usize) -> Result<(), NativeBi
         });
     }
     Ok(())
+}
+
+fn decode_fixed_hex(value: &str, expected_bytes: usize) -> Result<Vec<u8>, NativeBindingError> {
+    validate_hex_bytes(value, expected_bytes)?;
+    decode_hex(value)
+}
+
+fn decode_hex(value: &str) -> Result<Vec<u8>, NativeBindingError> {
+    let raw = value.strip_prefix("0x").unwrap_or(value);
+    if !raw.len().is_multiple_of(2) || !raw.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(NativeBindingError::InvalidHexString {
+            actual_nibbles: raw.len(),
+        });
+    }
+
+    let mut bytes = Vec::with_capacity(raw.len() / 2);
+    for pair in raw.as_bytes().chunks_exact(2) {
+        let high = hex_digit(pair[0]).expect("validated hex digit");
+        let low = hex_digit(pair[1]).expect("validated hex digit");
+        bytes.push((high << 4) | low);
+    }
+    Ok(bytes)
+}
+
+fn hex_digit(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
 }
 
 fn decode_neo_n3_address(value: &str) -> Result<[u8; NEO_SCRIPT_HASH_BYTES], NativeBindingError> {

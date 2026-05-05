@@ -20,6 +20,7 @@ It is modeled after the responsibilities of `neo-project/neo-devpack-dotnet`, ad
 - Native contracts: ContractManagement, StdLib, CryptoLib, Ledger, NEO, GAS, Policy, RoleManagement, Oracle.
 - Typed native-contract invocation builders with arity/type validation.
 - `NativeValue::address` validates Neo N3 Base58Check addresses, version `0x35`, and checksums before converting to `Hash160`.
+- `NativeValue` constructors validate hash160, hash256, public key, signature, byte array, and buffer inputs before they reach native-call builders.
 - Standards index: NEP-11, NEP-17, NEP-24, NEP-26, NEP-27, NEP-29, NEP-30, NEP-31.
 - Deep validators: NEP-17 and NEP-11 ABI/event shape.
 - Templates: hello world, NEP-17 token, NEP-11 NFT, storage map, oracle consumer, upgradeable admin.
