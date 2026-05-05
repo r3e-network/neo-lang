@@ -45,6 +45,7 @@ Recently fixed in active PR work:
 - Minimal deterministic script, NEF, and manifest golden snapshot coverage for compiler artifact regression detection.
 - Devpack native-call mock registry for deterministic native contract responses in fast unit tests.
 - Typed and validated Neo N3 `Storage.Find` options for devpack framework calls.
+- Devpack storage fixture `FindOptions` query support for deterministic key/value storage iteration tests.
 - README attribute mismatch for implemented attributes.
 
 ## Primary Gaps

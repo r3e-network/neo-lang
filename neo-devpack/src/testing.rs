@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::native::{NativeInvocation, NativeValue};
-use crate::types::NeoType;
+use crate::types::{FindOptions, FindOptionsError, NeoType};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StorageFixture {
@@ -55,6 +55,55 @@ impl StorageFixture {
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect()
     }
+
+    pub fn find<K>(
+        &self,
+        prefix: K,
+        options: FindOptions,
+    ) -> Result<Vec<StorageFindEntry>, FindOptionsError>
+    where
+        K: AsRef<[u8]>,
+    {
+        let options = options.validate()?;
+        let prefix = prefix.as_ref();
+        let keys_only = options.contains(FindOptions::KEYS_ONLY);
+        let remove_prefix = options.contains(FindOptions::REMOVE_PREFIX);
+        let values_only = options.contains(FindOptions::VALUES_ONLY);
+
+        let entries = self
+            .entries
+            .iter()
+            .filter(|(key, _)| key.starts_with(prefix))
+            .map(|(key, value)| {
+                if values_only {
+                    return StorageFindEntry::Value(value.clone());
+                }
+
+                let key = if remove_prefix {
+                    key[prefix.len()..].to_vec()
+                } else {
+                    key.clone()
+                };
+
+                if keys_only {
+                    StorageFindEntry::Key(key)
+                } else {
+                    StorageFindEntry::KeyValue {
+                        key,
+                        value: value.clone(),
+                    }
+                }
+            })
+            .collect();
+        Ok(entries)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StorageFindEntry {
+    Key(Vec<u8>),
+    Value(Vec<u8>),
+    KeyValue { key: Vec<u8>, value: Vec<u8> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

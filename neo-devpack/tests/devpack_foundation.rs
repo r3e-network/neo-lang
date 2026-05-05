@@ -8,7 +8,7 @@ use neo_devpack::native::{
 };
 use neo_devpack::standards::{standard_index, validate_standard, ContractShape, NepStandard};
 use neo_devpack::templates::{render_template, TemplateKind, TemplateOptions};
-use neo_devpack::testing::{DevPackTestContext, GasError, NativeMockRegistry};
+use neo_devpack::testing::{DevPackTestContext, GasError, NativeMockRegistry, StorageFindEntry};
 use neo_devpack::types::{FindOptions, FunctionSpec, NeoType, ParameterSpec};
 
 #[test]
@@ -714,6 +714,61 @@ fn testing_context_tracks_storage_notifications_and_gas() {
     assert_eq!(
         ctx.gas.charge(ctx.gas.remaining() + 1),
         Err(GasError::BudgetExceeded)
+    );
+}
+
+#[test]
+fn testing_storage_fixture_applies_find_options() {
+    let mut ctx = DevPackTestContext::new("0x0123456789abcdef0123456789abcdef01234567");
+    ctx.storage.put("balances:alice", [100]);
+    ctx.storage.put("balances:bob", [7]);
+    ctx.storage.put("owner:alice", [1]);
+
+    let all = ctx
+        .storage
+        .find("balances:", FindOptions::NONE)
+        .expect("default find");
+    assert_eq!(
+        all,
+        vec![
+            StorageFindEntry::KeyValue {
+                key: b"balances:alice".to_vec(),
+                value: vec![100],
+            },
+            StorageFindEntry::KeyValue {
+                key: b"balances:bob".to_vec(),
+                value: vec![7],
+            },
+        ]
+    );
+
+    let keys = ctx
+        .storage
+        .find(
+            "balances:",
+            FindOptions::KEYS_ONLY
+                .with(FindOptions::REMOVE_PREFIX)
+                .unwrap(),
+        )
+        .expect("keys only find");
+    assert_eq!(
+        keys,
+        vec![
+            StorageFindEntry::Key(b"alice".to_vec()),
+            StorageFindEntry::Key(b"bob".to_vec()),
+        ]
+    );
+
+    let values = ctx
+        .storage
+        .find("balances:", FindOptions::VALUES_ONLY)
+        .expect("values only find");
+    assert_eq!(
+        values,
+        vec![
+            StorageFindEntry::Value(vec![100]),
+            StorageFindEntry::Value(vec![7]),
+        ]
     );
 }
 

@@ -34,6 +34,7 @@ It is modeled after the responsibilities of `neo-project/neo-devpack-dotnet`, ad
 - Analyzer findings flag missing or malformed NEP-26/NEP-27 receiver callbacks before contracts are used as token recipients.
 - Compiler integration: `neo-compiler` consumes this catalog for `neo-devpack` import validation, runtime/storage/contract/crypto/iterator syscall imports, and NEP-17/NEP-11 `supportedStandards` ABI validation.
 - Template compile checks: all built-in `.neo` templates are parsed, type checked, code generated, and converted to manifests in the compiler test suite.
+- Testing storage fixtures support deterministic `FindOptions` queries with key, value, and key-value result shapes.
 - Testing helpers include `NativeMockRegistry` for deterministic native-contract call responses with return-type validation.
 
 ## Compiler Imports
@@ -93,7 +94,7 @@ use neo_devpack::native::{
     CryptoLib, GasToken, NativeContract, NativeValue, Oracle, Policy, StdLib,
 };
 use neo_devpack::standards::{validate_standard, ContractShape, NepStandard};
-use neo_devpack::testing::DevPackTestContext;
+use neo_devpack::testing::{DevPackTestContext, StorageFindEntry};
 use neo_devpack::types::FindOptions;
 
 let catalog = ApiCatalog::neo_n3();
@@ -166,6 +167,13 @@ let balance = GasToken::balance_of(NativeValue::address("NTRAJ9EEjHFHhHZvMKEKfkc
 let mut ctx = DevPackTestContext::new("0x0123456789abcdef0123456789abcdef01234567");
 ctx.native.when("GAS", "balanceOf", NativeValue::Integer(100));
 assert_eq!(ctx.native.invoke(&balance)?, NativeValue::Integer(100));
+
+ctx.storage.put("balances:alice", [100]);
+let found = ctx.storage.find(
+    "balances:",
+    FindOptions::KEYS_ONLY.with(FindOptions::REMOVE_PREFIX)?,
+)?;
+assert_eq!(found, vec![StorageFindEntry::Key(b"alice".to_vec())]);
 ```
 
 ## Current Limits
