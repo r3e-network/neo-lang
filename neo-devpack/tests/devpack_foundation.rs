@@ -1,6 +1,7 @@
 use neo_devpack::analyzer::{Analyzer, FindingSeverity};
 use neo_devpack::api::{ApiCatalog, CallFlags};
 use neo_devpack::manifest::{ContractManifest, ManifestBuilder};
+use neo_devpack::native::{NativeContract, NativeValue};
 use neo_devpack::standards::{standard_index, validate_standard, ContractShape, NepStandard};
 use neo_devpack::templates::{render_template, TemplateKind, TemplateOptions};
 use neo_devpack::testing::{DevPackTestContext, GasError};
@@ -49,6 +50,60 @@ fn api_catalog_exposes_core_framework_and_native_contracts() {
             "Oracle",
         ]
     );
+}
+
+#[test]
+fn native_contract_bindings_validate_arguments_and_surface_call_metadata() {
+    let alice = NativeValue::hash160("0x1111111111111111111111111111111111111111").unwrap();
+    let bob = NativeValue::hash160("0x2222222222222222222222222222222222222222").unwrap();
+
+    let transfer = NativeContract::Gas
+        .call("transfer")
+        .arg(alice.clone())
+        .arg(bob)
+        .arg(NativeValue::integer(42))
+        .arg(NativeValue::null())
+        .build()
+        .expect("GAS transfer binding");
+
+    assert_eq!(transfer.contract.name, "GAS");
+    assert_eq!(
+        transfer.contract_hash,
+        "0xd2a4cff31913016155e38e474a2c06d08be276cf"
+    );
+    assert_eq!(transfer.method.name, "transfer");
+    assert_eq!(transfer.method.return_type, NeoType::Boolean);
+    assert_eq!(
+        transfer.argument_types(),
+        vec![
+            NeoType::Hash160,
+            NeoType::Hash160,
+            NeoType::Integer,
+            NeoType::Any,
+        ]
+    );
+
+    let balance = NativeContract::Neo
+        .call("balanceOf")
+        .arg(alice.clone())
+        .build()
+        .expect("NEO balanceOf binding");
+    assert!(balance.method.safe);
+    assert_eq!(balance.method.return_type, NeoType::Integer);
+
+    let arity_error = NativeContract::Gas
+        .call("transfer")
+        .arg(alice.clone())
+        .build()
+        .unwrap_err();
+    assert!(arity_error.to_string().contains("expects 4 argument(s)"));
+
+    let type_error = NativeContract::Neo
+        .call("balanceOf")
+        .arg(NativeValue::integer(1))
+        .build()
+        .unwrap_err();
+    assert!(type_error.to_string().contains("expected `Hash160`"));
 }
 
 #[test]

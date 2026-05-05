@@ -123,3 +123,17 @@
 - [x] Map `neo-devpack/iterator` helpers to the new syscall metadata.
 - [x] Allow `any` iterator handles to satisfy syscall `InteropInterface` parameters.
 - [x] Document full direct framework syscall import coverage.
+
+### Task 10: Typed Native Contract Bindings
+
+**Files:**
+- Create: `neo-devpack/src/native.rs`
+- Modify: `neo-devpack/src/lib.rs`
+- Modify: `neo-devpack/tests/devpack_foundation.rs`
+- Modify: `neo-devpack/README.md`
+
+- [x] Add red tests for NEO/GAS native contract invocation metadata.
+- [x] Provide `NativeContract` enum for all catalog native contracts.
+- [x] Provide `NativeValue` typed arguments and hash160 validation.
+- [x] Validate native method arity and argument Neo types against the catalog.
+- [x] Return `NativeInvocation` metadata suitable for future compiler/native lowering.

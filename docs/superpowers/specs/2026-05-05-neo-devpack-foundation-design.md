@@ -12,6 +12,7 @@ Add a new workspace crate, `neo-devpack`, with focused modules:
 
 - `api`: typed catalog of Neo N3 framework services, interop syscalls, and native contracts.
 - `manifest`: serializable manifest model and small builder for devpack-generated artifacts.
+- `native`: typed native-contract invocation metadata and argument validation.
 - `standards`: NEP standard metadata and compatibility checks for method/event shapes.
 - `templates`: built-in `.neo` templates for common contracts.
 - `testing`: in-memory contract storage, notification capture, and gas accounting primitives for fast tests.
@@ -61,6 +62,10 @@ The first compiler integration layer uses `neo-devpack::api::ApiCatalog` to vali
 - `import rt from "neo-devpack/runtime";`
 
 Runtime module aliases lower to the existing `System.Runtime.*` syscall path. Storage, contract, crypto, and iterator module imports lower through a shared devpack-to-syscall mapping. Unknown devpack modules are rejected during type checking.
+
+## Native Contract Bindings
+
+The devpack exposes a typed native invocation builder for ContractManagement, StdLib, CryptoLib, Ledger, NEO, GAS, Policy, RoleManagement, and Oracle. It validates method names, arity, and argument Neo types against `ApiCatalog`, producing `NativeInvocation` metadata that later compiler and test harness layers can lower to `System.Contract.Call`.
 
 ## Testing Strategy
 
