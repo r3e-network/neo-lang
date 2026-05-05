@@ -130,6 +130,22 @@ impl Syscall {
         callflags: CallFlags::None as u8,
     };
 
+    // --- System.Iterator.*  ---
+
+    pub const ITERATOR_NEXT: Syscall = Syscall {
+        name: "System.Iterator.Next",
+        args: &[("iterator", StackItemType::InteropInterface)],
+        return_type: Some(StackItemType::Boolean),
+        callflags: CallFlags::None as u8,
+    };
+
+    pub const ITERATOR_VALUE: Syscall = Syscall {
+        name: "System.Iterator.Value",
+        args: &[("iterator", StackItemType::InteropInterface)],
+        return_type: Some(StackItemType::Any),
+        callflags: CallFlags::None as u8,
+    };
+
     // --- System.Runtime.*  ---
 
     pub const RUNTIME_PLATFORM: Syscall = Syscall {
@@ -425,6 +441,8 @@ const SYSCALLS: &[Syscall] = &[
     Syscall::CONTRACT_CREATE_MULTISIG_ACCOUNT,
     Syscall::CRYPTO_CHECK_SIG,
     Syscall::CRYPTO_CHECK_MULTISIG,
+    Syscall::ITERATOR_NEXT,
+    Syscall::ITERATOR_VALUE,
     Syscall::RUNTIME_PLATFORM,
     Syscall::RUNTIME_GET_NETWORK,
     Syscall::RUNTIME_GET_ADDRESS_VERSION,

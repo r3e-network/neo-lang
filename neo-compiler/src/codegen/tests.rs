@@ -177,6 +177,61 @@ fn codegen_neo_devpack_framework_aliases_emit_syscalls() {
 }
 
 #[test]
+fn codegen_neo_devpack_iterator_alias_emits_syscalls() {
+    let src = r#"
+        import s from "neo-devpack/storage";
+        import iterator from "neo-devpack";
+
+        contract C {
+            #[safe]
+            bool hasPrefix() {
+                var entries = s.localFind("prefix", 0);
+                return iterator.next(entries);
+            }
+
+            #[safe]
+            any firstValue(any entries) {
+                return iterator.value(entries);
+            }
+        }
+    "#;
+    let sf = parse_source_file(src).unwrap();
+    let out = Codegen::new().codegen_source_file(&sf).unwrap();
+    let has_prefix = out
+        .contract_methods
+        .iter()
+        .find(|method| method.name == "hasPrefix")
+        .expect("hasPrefix method");
+    assert!(
+        has_prefix.instructions.iter().any(|instruction| {
+            instruction.opcode == OpCode::SYSCALL
+                && instruction.operands == Syscall::STORAGE_LOCAL_FIND.token().to_le_bytes()
+        }),
+        "expected storage.localFind to emit System.Storage.Local.Find"
+    );
+    assert!(
+        has_prefix.instructions.iter().any(|instruction| {
+            instruction.opcode == OpCode::SYSCALL
+                && instruction.operands == Syscall::ITERATOR_NEXT.token().to_le_bytes()
+        }),
+        "expected iterator.next to emit System.Iterator.Next"
+    );
+
+    let first_value = out
+        .contract_methods
+        .iter()
+        .find(|method| method.name == "firstValue")
+        .expect("firstValue method");
+    assert!(
+        first_value.instructions.iter().any(|instruction| {
+            instruction.opcode == OpCode::SYSCALL
+                && instruction.operands == Syscall::ITERATOR_VALUE.token().to_le_bytes()
+        }),
+        "expected iterator.value to emit System.Iterator.Value"
+    );
+}
+
+#[test]
 fn codegen_contract_without_methods() {
     let sf = parse_source_file("contract X { int x; }").unwrap();
     let out = Codegen::new().codegen_source_file(&sf).unwrap();

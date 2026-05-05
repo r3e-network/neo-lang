@@ -255,7 +255,8 @@ fn satisfies_stack_item(ty: &Type, sit: StackItemType) -> bool {
         StackItemType::Array => matches!(ty, Type::Array(_) | Type::Any),
         StackItemType::Map => matches!(ty, Type::Map { .. } | Type::Any),
         StackItemType::Any => true,
-        StackItemType::Pointer | StackItemType::InteropInterface => false,
+        StackItemType::InteropInterface => matches!(ty, Type::Any),
+        StackItemType::Pointer => false,
     }
 }
 

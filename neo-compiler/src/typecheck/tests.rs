@@ -101,6 +101,29 @@ fn accepts_neo_devpack_framework_import_syscalls() {
 }
 
 #[test]
+fn accepts_neo_devpack_iterator_import_syscalls() {
+    let src = r#"
+        import s from "neo-devpack/storage";
+        import iterator from "neo-devpack";
+
+        contract C {
+            #[safe]
+            bool hasPrefix() {
+                var entries = s.localFind("prefix", 0);
+                return iterator.next(entries);
+            }
+
+            #[safe]
+            any firstValue(any entries) {
+                return iterator.value(entries);
+            }
+        }
+    "#;
+    let ast = parse_source_file(src).expect("parse");
+    ast.type_check().expect("typecheck");
+}
+
+#[test]
 fn rejects_map_with_non_primitive_key_type() {
     let src = r#"
         package demo;

@@ -114,6 +114,8 @@ pub fn syscall_for_module_method(module: DevPackModule, method: &str) -> Option<
         }
         (DevPackModule::Crypto, "checkSig") => Syscall::CRYPTO_CHECK_SIG,
         (DevPackModule::Crypto, "checkMultisig") => Syscall::CRYPTO_CHECK_MULTISIG,
+        (DevPackModule::Iterator, "next") => Syscall::ITERATOR_NEXT,
+        (DevPackModule::Iterator, "value") => Syscall::ITERATOR_VALUE,
         _ => return None,
     })
 }
@@ -163,7 +165,11 @@ mod tests {
         );
         assert_eq!(
             syscall_for_module_method(DevPackModule::Iterator, "next"),
-            None
+            Some(Syscall::ITERATOR_NEXT)
+        );
+        assert_eq!(
+            syscall_for_module_method(DevPackModule::Iterator, "value"),
+            Some(Syscall::ITERATOR_VALUE)
         );
     }
 }

@@ -109,3 +109,17 @@
 - [x] Type check devpack syscall arguments and return types through the shared syscall table.
 - [x] Emit syscalls from devpack import aliases and preserve a disposable value for void syscall statement expressions.
 - [x] Correct `System.Contract.Call` and `System.Storage.AsReadOnly` syscall metadata used by the devpack mapping.
+
+### Task 9: Iterator Syscall Import Lowering
+
+**Files:**
+- Modify: `neo-compiler/src/target/syscall.rs`
+- Modify: `neo-compiler/src/devpack.rs`
+- Modify: `neo-compiler/src/typecheck/mod.rs`
+- Modify: compiler tests and devpack README
+
+- [x] Add red tests for `storage.localFind(...)` plus `iterator.next/value(...)` imports.
+- [x] Add `System.Iterator.Next` and `System.Iterator.Value` syscall metadata.
+- [x] Map `neo-devpack/iterator` helpers to the new syscall metadata.
+- [x] Allow `any` iterator handles to satisfy syscall `InteropInterface` parameters.
+- [x] Document full direct framework syscall import coverage.
