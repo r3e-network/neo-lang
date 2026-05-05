@@ -86,6 +86,7 @@ impl SourceFile {
         };
 
         self.check_source_file_map_types()?;
+        ctx.check_contract_field_initializers()?;
 
         for func in &self.functions {
             ctx.check_function(func, FnType::Package)?;
@@ -279,7 +280,38 @@ fn syscall_return_type(syscall: &crate::target::syscall::Syscall) -> Type {
     }
 }
 
+fn contract_field_init_type_matches(init_ty: &Type, field_ty: &Type) -> bool {
+    init_ty.can_assign_to(field_ty)
+        || matches!(
+            (init_ty, field_ty),
+            (Type::String, Type::Hash160 | Type::Hash256 | Type::Buffer)
+        )
+}
+
 impl<'a> TypeCheckContext<'a> {
+    fn check_contract_field_initializers(&self) -> Result<(), TypeError> {
+        for field in self.contract_fields {
+            let Some(init) = &field.init else {
+                continue;
+            };
+            if field.ty.is_map() {
+                return Err(err(format!(
+                    "contract map field `{}` cannot have an initializer",
+                    field.name
+                )));
+            }
+            let mut env = FnEnv::new(true);
+            let init_ty = self.infer_expr(&mut env, init)?;
+            if !contract_field_init_type_matches(&init_ty, &field.ty) {
+                return Err(err(format!(
+                    "contract field `{}` initializer type mismatch: expected `{:?}`, got `{init_ty:?}`",
+                    field.name, field.ty
+                )));
+            }
+        }
+        Ok(())
+    }
+
     fn check_function(&self, func: &FunctionDecl, fn_type: FnType) -> Result<(), TypeError> {
         let is_contract_fn = matches!(fn_type, FnType::ContractMethod { .. });
         let mut env = FnEnv::new(is_contract_fn);

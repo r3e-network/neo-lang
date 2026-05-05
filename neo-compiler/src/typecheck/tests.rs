@@ -124,6 +124,26 @@ fn accepts_neo_devpack_iterator_import_syscalls() {
 }
 
 #[test]
+fn rejects_contract_storage_initializer_type_mismatch() {
+    let src = r#"
+        contract C {
+            int count = "not an int";
+
+            int get() {
+                return self.count;
+            }
+        }
+    "#;
+    let ast = parse_source_file(src).expect("parse");
+    let err = ast.type_check().unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("contract field `count` initializer type mismatch"),
+        "{err}"
+    );
+}
+
+#[test]
 fn rejects_map_with_non_primitive_key_type() {
     let src = r#"
         package demo;

@@ -277,6 +277,8 @@ int totalSupply = 10000;
 map[hash160, int] balances;
 ```
 
+Explicit mutable property initializers are emitted into the contract `_deploy(data, update)` routine and are written to storage only on the first deployment (`update == false`). If no `_deploy` method is declared, the compiler synthesizes one. If a user-defined `_deploy` method with a `bool update` parameter exists, the compiler prepends the initializer writes before the user body.
+
 Mutable property read and write will cause contract storage load/store operations, and these operations are expensive.
 Therefore, it is recommended to declare as many constant properties as possible to reduce the contract storage usage or
 avoid load/store multiple times if data are not changed.

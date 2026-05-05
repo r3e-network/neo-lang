@@ -241,6 +241,41 @@ fn codegen_contract_without_methods() {
 }
 
 #[test]
+fn codegen_contract_storage_initializer_synthesizes_deploy_put() {
+    let src = r#"
+        contract X {
+            int x = 7;
+
+            #[safe]
+            int get() {
+                return self.x;
+            }
+        }
+    "#;
+    let sf = parse_source_file(src).unwrap();
+    let out = Codegen::new().codegen_source_file(&sf).unwrap();
+    let deploy = out
+        .contract_methods
+        .iter()
+        .find(|method| method.name == "_deploy")
+        .expect("expected synthetic _deploy method for storage initializers");
+    assert!(
+        deploy
+            .instructions
+            .iter()
+            .any(|instruction| instruction.opcode == OpCode::PUSH7),
+        "expected initializer literal to be emitted"
+    );
+    assert!(
+        deploy.instructions.iter().any(|instruction| {
+            instruction.opcode == OpCode::SYSCALL
+                && instruction.operands == Syscall::STORAGE_LOCAL_PUT.token().to_le_bytes()
+        }),
+        "expected initializer to store into contract storage"
+    );
+}
+
+#[test]
 fn codegen_struct_call_emits_linked_call_l() {
     let src = r#"
         struct Point {

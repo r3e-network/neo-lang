@@ -161,6 +161,27 @@ fn build_manifest(ast: &SourceFile, compiled: &CompiledSourceFile) -> Result<Man
         }
     }
 
+    if !methods.iter().any(|method| method.name == "_deploy") {
+        if let Some(offset) = contract_method_offset.get("_deploy").copied() {
+            methods.push(ContractMethod {
+                name: "_deploy".into(),
+                parameters: vec![
+                    ContractParameter {
+                        name: "data".into(),
+                        ty: "Any".into(),
+                    },
+                    ContractParameter {
+                        name: "update".into(),
+                        ty: "Boolean".into(),
+                    },
+                ],
+                return_type: "Void".into(),
+                offset,
+                safe: false,
+            });
+        }
+    }
+
     Ok(Manifest {
         name: contract.name.clone(),
         groups: vec![],
@@ -190,4 +211,39 @@ fn manifest_type_name(ty: &Type) -> String {
         Type::Map { .. } => "Map",
     }
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::syntax::parser::parse_source_file;
+
+    #[test]
+    fn manifest_includes_synthetic_deploy_for_contract_storage_initializers() {
+        let src = r#"
+            contract X {
+                int x = 7;
+
+                #[safe]
+                int get() {
+                    return self.x;
+                }
+            }
+        "#;
+        let ast = parse_source_file(src).expect("parse");
+        let compiled = Codegen::new().codegen_source_file(&ast).expect("codegen");
+        let manifest = build_manifest(&ast, &compiled).expect("manifest");
+        let deploy = manifest
+            .abi
+            .methods
+            .iter()
+            .find(|method| method.name == "_deploy")
+            .expect("synthetic _deploy ABI method");
+        assert_eq!(deploy.return_type, "Void");
+        assert_eq!(deploy.parameters.len(), 2);
+        assert_eq!(deploy.parameters[0].name, "data");
+        assert_eq!(deploy.parameters[0].ty, "Any");
+        assert_eq!(deploy.parameters[1].name, "update");
+        assert_eq!(deploy.parameters[1].ty, "Boolean");
+    }
 }

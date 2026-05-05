@@ -137,3 +137,17 @@
 - [x] Provide `NativeValue` typed arguments and hash160 validation.
 - [x] Validate native method arity and argument Neo types against the catalog.
 - [x] Return `NativeInvocation` metadata suitable for future compiler/native lowering.
+
+### Task 11: Contract Storage Field Initializers
+
+**Files:**
+- Modify: `neo-compiler/src/codegen/mod.rs`
+- Modify: `neo-compiler/src/build_target.rs`
+- Modify: `neo-compiler/src/typecheck/mod.rs`
+- Modify: compiler tests and README
+
+- [x] Add red tests proving `int x = 7` emits a storage put during deploy.
+- [x] Synthesize `_deploy(data, update)` when explicit storage initializers exist and no deploy hook is declared.
+- [x] Include synthesized `_deploy` in manifest ABI with the correct offset and signature.
+- [x] Prepend initializer writes to user-defined `_deploy` methods that expose a `bool update` parameter.
+- [x] Type-check contract field initializer expressions before codegen.
