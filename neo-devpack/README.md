@@ -7,6 +7,7 @@ It is modeled after the responsibilities of `neo-project/neo-devpack-dotnet`, ad
 ## Modules
 
 - `api`: typed Neo N3 framework, interop, and native contract catalog.
+- `framework`: typed framework syscall invocation metadata and argument validation.
 - `manifest`: Neo N3 manifest model and builder helpers.
 - `native`: typed native-contract invocation metadata and argument validation.
 - `standards`: NEP standard index and compatibility validators.
@@ -17,6 +18,7 @@ It is modeled after the responsibilities of `neo-project/neo-devpack-dotnet`, ad
 ## Included Foundation Coverage
 
 - Framework modules: Runtime, Storage, Contract, Crypto, Iterator.
+- Framework helpers: `Runtime`, `Storage`, `Contract`, `Crypto`, and `IteratorApi` build typed syscall invocations using the shared API catalog.
 - Native contracts: ContractManagement, StdLib, CryptoLib, Ledger, NEO, GAS, Policy, RoleManagement, Oracle.
 - Typed native-contract invocation builders with arity/type validation.
 - `StdLib` and `CryptoLib` helper wrappers build typed native invocations for serialization, base encodings, hashing, and ECDSA verification.
@@ -84,6 +86,7 @@ Unknown `neo-devpack/<module>` imports are rejected during type checking. Runtim
 
 ```rust
 use neo_devpack::api::ApiCatalog;
+use neo_devpack::framework::{Contract, FrameworkValue, Runtime, Storage};
 use neo_devpack::native::{
     CryptoLib, GasToken, NativeContract, NativeValue, Oracle, Policy, StdLib,
 };
@@ -121,6 +124,23 @@ assert_eq!(digest.method.name, "sha256");
 
 let encoded = StdLib::base64_encode(NativeValue::byte_array("0x68656c6c6f")?)?;
 assert_eq!(encoded.method.name, "base64Encode");
+
+let network = Runtime::get_network()?;
+assert_eq!(network.function.name, "getNetwork");
+
+let storage_put = Storage::put(
+    FrameworkValue::ByteArray(vec![b'k']),
+    FrameworkValue::ByteArray(vec![b'v']),
+)?;
+assert_eq!(storage_put.function.name, "put");
+
+let low_level_call = Contract::call(
+    FrameworkValue::from(NativeValue::address("NTRAJ9EEjHFHhHZvMKEKfkceg5V9ppx5ZP")?),
+    "balanceOf",
+    neo_devpack::types::CallFlags::ReadOnly,
+    vec![],
+)?;
+assert_eq!(low_level_call.function.name, "call");
 
 let blocked = Policy::is_blocked(NativeValue::address("NTRAJ9EEjHFHhHZvMKEKfkceg5V9ppx5ZP")?)?;
 assert_eq!(blocked.method.name, "isBlocked");

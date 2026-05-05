@@ -35,6 +35,7 @@ Recently fixed in active PR work:
 - Compiler compile checks for all built-in devpack templates.
 - GitHub Actions CI and docs examples marked with `neo,compile`.
 - NEP-17 starter template sender witness checks and `onNEP17Payment` callback scaffolding through typed `Contract.Call` flags.
+- Runtime, Storage, Contract, Crypto, and Iterator framework helper wrappers for typed syscall invocation metadata and argument validation.
 - Devpack native-value helper for validating Neo N3 Base58Check addresses and converting them into `Hash160` values for native calls.
 - Devpack native-value constructors for validated hash256, public key, signature, byte array, and buffer values.
 - NEP-26/NEP-27 receiver callback ABI validation for contracts that declare token payment callback support.

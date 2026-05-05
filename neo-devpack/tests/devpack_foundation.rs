@@ -1,5 +1,6 @@
 use neo_devpack::analyzer::{Analyzer, FindingSeverity};
 use neo_devpack::api::{ApiCatalog, CallFlags};
+use neo_devpack::framework::{Contract, FrameworkValue, Runtime, Storage};
 use neo_devpack::manifest::{ContractManifest, ManifestBuilder};
 use neo_devpack::native::{
     ContractManagement, CryptoLib, GasToken, Ledger, NativeContract, NativeValue, NeoToken, Oracle,
@@ -277,6 +278,61 @@ fn remaining_native_contract_helpers_build_typed_invocations() {
     let bad_ledger =
         Ledger::get_transaction(account).expect_err("Ledger wrapper validates hash256");
     assert!(bad_ledger.to_string().contains("expected `Hash256`"));
+}
+
+#[test]
+fn framework_helpers_build_typed_syscall_invocations() {
+    let network = Runtime::get_network().expect("Runtime.getNetwork wrapper");
+    assert_eq!(network.module.name, "runtime");
+    assert_eq!(network.function.name, "getNetwork");
+    assert!(network.function.safe);
+    assert_eq!(network.function.return_type, NeoType::Integer);
+
+    let witness = Runtime::check_witness(FrameworkValue::PublicKey(vec![0x02; 33]))
+        .expect("Runtime.checkWitness wrapper");
+    assert_eq!(witness.function.name, "checkWitness");
+    assert_eq!(witness.argument_types(), vec![NeoType::PublicKey]);
+
+    let put = Storage::put(
+        FrameworkValue::ByteArray(vec![b'k']),
+        FrameworkValue::ByteArray(vec![b'v']),
+    )
+    .expect("Storage.put wrapper");
+    assert_eq!(put.module.name, "storage");
+    assert_eq!(put.function.name, "put");
+    assert_eq!(put.function.required_call_flags, CallFlags::WriteStates);
+    assert_eq!(
+        put.argument_types(),
+        vec![NeoType::ByteArray, NeoType::ByteArray]
+    );
+
+    let contract_call = Contract::call(
+        FrameworkValue::Hash160("0x1111111111111111111111111111111111111111".into()),
+        "balanceOf",
+        CallFlags::ReadOnly,
+        vec![FrameworkValue::Hash160(
+            "0x2222222222222222222222222222222222222222".into(),
+        )],
+    )
+    .expect("Contract.call wrapper");
+    assert_eq!(contract_call.module.name, "contract");
+    assert_eq!(contract_call.function.name, "call");
+    assert_eq!(
+        contract_call.argument_types(),
+        vec![
+            NeoType::Hash160,
+            NeoType::String,
+            NeoType::Integer,
+            NeoType::Array,
+        ]
+    );
+
+    let bad_put = Storage::put(
+        FrameworkValue::Integer(1),
+        FrameworkValue::ByteArray(vec![b'v']),
+    )
+    .expect_err("Storage.put should validate byte-array keys");
+    assert!(bad_put.to_string().contains("expected `ByteArray`"));
 }
 
 #[test]
