@@ -7,7 +7,7 @@ It is a high-level programming language that is designed to be easy to use.
 
 ```
 // Define a contract. Any `neo-lang` program must be a(only one) contract.
-#[auther("AuthorName")]
+#[author("AuthorName")]
 #[version("0.0.1")]
 contract Example {
     // Declare a constant string property
@@ -345,18 +345,26 @@ The value(or value list) is optional.
 
 Example:
 ```
-#[auther("AuthorName")]
+#[author("AuthorName")]
 #[version("0.0.1")]
+#[description("Example contract")]
+#[supportedStandards("NEP-17")]
 contract Example {
     // ...
 }
 ```
 
 ### Built-in Attributes
-- `#[auther("AuthorName")]`: For contract, the author.
-- `#[version("0.0.1")]`: For contract, the version.
-- `#[pure]`: For contract method, mark the method as pure(never store data, never emit events, never call other contracts).
-- `#[noreentrant]`: For contract method, mark the method as non-reentrant.
+- `#[author("AuthorName")]`: For contract, emits `extra.author` in the manifest. The misspelled legacy form `#[auther(...)]` is accepted as an alias.
+- `#[email("dev@example.com")]`: For contract, emits `extra.email`.
+- `#[description("...")]`: For contract, emits `extra.description`.
+- `#[source("https://...")]`: For contract, emits `extra.source`.
+- `#[version("0.0.1")]`: For contract, emits `extra.version`.
+- `#[supportedStandards("NEP-17", "NEP-11")]`: For contract, emits manifest `supportedstandards`.
+- `#[permission(contract, method...)]`: For contract, emits manifest permissions. Use `#[permission("*")]` to allow all contracts and methods, or pass a contract hash/group public key plus method names.
+- `#[trust(contract...)]`: For contract, emits manifest trusts. Use `#[trust("*")]` to trust all.
+- `#[group(pubkey, signature)]`: For contract, emits a manifest group entry.
+- `#[safe]`: For contract method, marks the ABI method as safe.
 
 
 ### Package

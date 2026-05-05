@@ -30,6 +30,7 @@ Recently fixed in active PR work:
 - Long jump opcode classification.
 - Contract field initializers emitted in deploy bytecode.
 - Signed 256-bit integer literals.
+- Contract manifest attributes for author, standards, permissions, trusts, and groups.
 - README attribute mismatch for implemented attributes.
 
 ## Primary Gaps

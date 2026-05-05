@@ -63,16 +63,97 @@ fn is_predefined_fn(name: &str) -> bool {
     name == "_deploy" || name == "_initialize"
 }
 
-fn build_extra_metadata(ast: &SourceFile) -> Result<HashMap<String, String>, String> {
-    let Some(attrs) = ast.contract.as_ref() else {
-        return Ok(HashMap::new());
-    };
-    let mut extra = HashMap::new();
-    for attr in &attrs.attributes {
-        let values = attr.args.join(",");
-        extra.insert(attr.name.clone(), values);
+#[derive(Default)]
+struct ManifestAttributes {
+    groups: Vec<ContractGroup>,
+    supported_standards: Vec<String>,
+    permissions: Option<Vec<ContractPermission>>,
+    trusts: Option<PermissionRule>,
+    extra: HashMap<String, String>,
+}
+
+fn parse_manifest_attributes(contract: &ContractDecl) -> Result<ManifestAttributes, String> {
+    let mut parsed = ManifestAttributes::default();
+    for attr in &contract.attributes {
+        match attr.name.as_str() {
+            "author" | "auther" => {
+                parsed.extra.insert(
+                    "author".into(),
+                    single_attr_arg(attr, "author")?.to_string(),
+                );
+            }
+            "email" | "description" | "source" | "version" => {
+                parsed.extra.insert(
+                    attr.name.clone(),
+                    single_attr_arg(attr, &attr.name)?.to_string(),
+                );
+            }
+            "supportedStandards" | "supportedstandards" => {
+                if attr.args.is_empty() {
+                    return Err(
+                        "attribute `supportedStandards` requires at least one standard".into(),
+                    );
+                }
+                parsed.supported_standards.extend(attr.args.iter().cloned());
+            }
+            "permission" => {
+                if attr.args.is_empty() {
+                    return Err("attribute `permission` requires a contract target".into());
+                }
+                let methods = permission_rule_from_args(&attr.args[1..], "permission methods")?;
+                parsed
+                    .permissions
+                    .get_or_insert_with(Vec::new)
+                    .push(ContractPermission {
+                        contract: attr.args[0].clone(),
+                        methods,
+                    });
+            }
+            "trust" | "trusts" => {
+                parsed.trusts = Some(permission_rule_from_args(&attr.args, "trusts")?);
+            }
+            "group" => {
+                if attr.args.len() != 2 {
+                    return Err(
+                        "attribute `group` requires exactly public key and signature strings"
+                            .into(),
+                    );
+                }
+                parsed.groups.push(ContractGroup {
+                    pubkey: attr.args[0].clone(),
+                    signature: attr.args[1].clone(),
+                });
+            }
+            _ => {
+                parsed.extra.insert(attr.name.clone(), attr.args.join(","));
+            }
+        }
     }
-    Ok(extra)
+    Ok(parsed)
+}
+
+fn single_attr_arg<'a>(attr: &'a Attribute, name: &str) -> Result<&'a str, String> {
+    if attr.args.len() != 1 {
+        return Err(format!(
+            "attribute `{name}` requires exactly one string argument"
+        ));
+    }
+    Ok(&attr.args[0])
+}
+
+fn permission_rule_from_args(args: &[String], label: &str) -> Result<PermissionRule, String> {
+    if args.is_empty() {
+        return Ok(PermissionRule::All);
+    }
+    if args.iter().any(|arg| arg == WILDCARD) {
+        if args.len() == 1 {
+            return Ok(PermissionRule::All);
+        }
+        return Err(format!(
+            "attribute `{label}` cannot combine `*` with explicit values"
+        ));
+    }
+    Ok(PermissionRule::Allows(args.to_vec()))
 }
 
 fn build_manifest(ast: &SourceFile, compiled: &CompiledSourceFile) -> Result<Manifest, String> {
@@ -80,6 +161,7 @@ fn build_manifest(ast: &SourceFile, compiled: &CompiledSourceFile) -> Result<Man
         .contract
         .as_ref()
         .ok_or_else(|| "missing contract".to_string())?;
+    let manifest_attrs = parse_manifest_attributes(contract)?;
 
     // Compute script offsets for all routines in the flattened script.
     let mut off: u32 = 0;
@@ -184,15 +266,17 @@ fn build_manifest(ast: &SourceFile, compiled: &CompiledSourceFile) -> Result<Man
 
     Ok(Manifest {
         name: contract.name.clone(),
-        groups: vec![],
-        supported_standards: vec![],
+        groups: manifest_attrs.groups,
+        supported_standards: manifest_attrs.supported_standards,
         abi: ContractAbi { methods, events },
-        permissions: vec![ContractPermission {
-            contract: WILDCARD.into(),
-            methods: PermissionRule::All,
-        }], // TODO: get permissions of the contract
-        trusts: PermissionRule::All, // TODO: get trusts of the contract
-        extra: build_extra_metadata(ast)?,
+        permissions: manifest_attrs.permissions.unwrap_or_else(|| {
+            vec![ContractPermission {
+                contract: WILDCARD.into(),
+                methods: PermissionRule::All,
+            }]
+        }),
+        trusts: manifest_attrs.trusts.unwrap_or(PermissionRule::All),
+        extra: manifest_attrs.extra,
     })
 }
 
@@ -245,5 +329,73 @@ mod tests {
         assert_eq!(deploy.parameters[0].ty, "Any");
         assert_eq!(deploy.parameters[1].name, "update");
         assert_eq!(deploy.parameters[1].ty, "Boolean");
+    }
+
+    #[test]
+    fn manifest_maps_contract_attributes_to_neo_n3_fields() {
+        let src = r#"
+            #[author("core-dev")]
+            #[email("core@example.com")]
+            #[description("Production token")]
+            #[supportedStandards("NEP-17", "NEP-11")]
+            #[permission("0x1234567890abcdef1234567890abcdef12345678", "transfer", "balanceOf")]
+            #[trust("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd")]
+            #[group("03b209fd4f04a9d3e8e7b4ad5c5f2d5148c10c7ad2e9eac19b7e8acb4d2f0a5f5f", "MEUCIQD")]
+            contract Token {
+                #[safe]
+                string symbol() {
+                    return "TOK";
+                }
+            }
+        "#;
+        let ast = parse_source_file(src).expect("parse");
+        let compiled = Codegen::new().codegen_source_file(&ast).expect("codegen");
+        let manifest = build_manifest(&ast, &compiled).expect("manifest");
+
+        assert_eq!(manifest.supported_standards, vec!["NEP-17", "NEP-11"]);
+        assert_eq!(
+            manifest.extra.get("author").map(String::as_str),
+            Some("core-dev")
+        );
+        assert_eq!(
+            manifest.extra.get("email").map(String::as_str),
+            Some("core@example.com")
+        );
+        assert_eq!(
+            manifest.extra.get("description").map(String::as_str),
+            Some("Production token")
+        );
+
+        assert_eq!(manifest.permissions.len(), 1);
+        assert_eq!(
+            manifest.permissions[0].contract,
+            "0x1234567890abcdef1234567890abcdef12345678"
+        );
+        match &manifest.permissions[0].methods {
+            PermissionRule::Allows(methods) => {
+                assert_eq!(
+                    methods,
+                    &vec!["transfer".to_string(), "balanceOf".to_string()]
+                );
+            }
+            PermissionRule::All => panic!("expected method-level permission rule"),
+        }
+
+        match &manifest.trusts {
+            PermissionRule::Allows(trusts) => {
+                assert_eq!(
+                    trusts,
+                    &vec!["0xabcdefabcdefabcdefabcdefabcdefabcdefabcd".to_string()]
+                );
+            }
+            PermissionRule::All => panic!("expected explicit trusts"),
+        }
+
+        assert_eq!(manifest.groups.len(), 1);
+        assert_eq!(
+            manifest.groups[0].pubkey,
+            "03b209fd4f04a9d3e8e7b4ad5c5f2d5148c10c7ad2e9eac19b7e8acb4d2f0a5f5f"
+        );
+        assert_eq!(manifest.groups[0].signature, "MEUCIQD");
     }
 }

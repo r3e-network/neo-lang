@@ -168,3 +168,16 @@
 - [x] Emit `PUSHINT256` for valid signed i256 literals outside `i128`.
 - [x] Reject positive literals above signed i256 max and negative literals below signed i256 min.
 - [x] Document the signed i256 literal range in README.
+
+### Task 13: Contract Manifest Attributes
+
+**Files:**
+- Modify: `neo-compiler/src/build_target.rs`
+- Modify: `neo-compiler/src/syntax/mod.rs`
+- Modify: `README.md`
+
+- [x] Add red tests proving contract attributes are not mapped into Neo N3 manifest fields.
+- [x] Map `author`, `email`, `description`, `source`, and `version` to manifest `extra` metadata.
+- [x] Map `supportedStandards`, `permission`, `trust`, and `group` attributes to first-class manifest fields.
+- [x] Keep `auther` as a legacy alias for `author` while documenting the correct spelling.
+- [x] Document implemented contract/method attributes and remove unimplemented `pure` / `noreentrant` claims.
