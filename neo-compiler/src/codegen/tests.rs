@@ -538,6 +538,32 @@ fn ssa_const_folding_eliminates_add_for_simple_var_init() {
 }
 
 #[test]
+fn ssa_large_int_literal_emits_pushint256() {
+    // Triggers IR pipeline via `var`.
+    let src = r#"
+        package demo;
+        int f() {
+            var x = 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+            return x;
+        }
+    "#;
+    let sf = parse_source_file(src).unwrap();
+    let mut pkg = HashMap::new();
+    for f in &sf.functions {
+        pkg.insert(f.name.clone(), f.params.len());
+    }
+    let f = sf.functions.iter().find(|f| f.name == "f").unwrap();
+    let compiled = compile_function(f, &[], None, &pkg).unwrap();
+    let push = compiled
+        .instructions
+        .iter()
+        .find(|i| i.opcode == OpCode::PUSHINT256)
+        .expect("expected signed 256-bit int literal to emit PUSHINT256");
+    assert_eq!(push.operands.len(), 32);
+    assert_eq!(push.operands[31], 0x7f);
+}
+
+#[test]
 fn ssa_cse_eliminates_duplicate_add() {
     // `x + 1` appears twice; CSE should compute it once.
     let src = r#"

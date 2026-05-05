@@ -151,3 +151,20 @@
 - [x] Include synthesized `_deploy` in manifest ABI with the correct offset and signature.
 - [x] Prepend initializer writes to user-defined `_deploy` methods that expose a `bool update` parameter.
 - [x] Type-check contract field initializer expressions before codegen.
+
+### Task 12: Signed 256-bit Integer Literals
+
+**Files:**
+- Modify: `neo-compiler/src/codegen/expr/literal.rs`
+- Modify: `neo-compiler/src/codegen/expr/tests.rs`
+- Modify: `neo-compiler/src/codegen/ir_codegen/builder.rs`
+- Modify: `neo-compiler/src/codegen/ir_codegen/stackify_plan.rs`
+- Modify: `neo-compiler/src/codegen/tests.rs`
+- Modify: `README.md`
+
+- [x] Add red tests proving legal signed i256 literals above `i128` currently fail in legacy expression codegen and IR codegen.
+- [x] Parse decimal, hex, and binary integer literals into signed i256 little-endian two's-complement bytes.
+- [x] Preserve compact `PUSH*`/`PUSHINT64`/`PUSHINT128` emission for smaller literals.
+- [x] Emit `PUSHINT256` for valid signed i256 literals outside `i128`.
+- [x] Reject positive literals above signed i256 max and negative literals below signed i256 min.
+- [x] Document the signed i256 literal range in README.

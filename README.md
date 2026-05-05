@@ -49,7 +49,7 @@ See `neo-devpack/README.md` and `docs/superpowers/plans/2026-05-05-neo-n3-compil
 `neo-lang` is strongly typed language, and the built-in types are:
 - `null`: The null value. Literal: `null`.
 - `bool`: The boolean type. Literal: `true` or `false`.
-- `int`: The integer type. (256-bit signed integer, litteral: prefix: Hex(`0x`, `0X`), Binary(`0b`, `0B`), Decimal(no prefix)).
+- `int`: The integer type. (256-bit signed integer, literal prefixes: Hex(`0x`, `0X`), Binary(`0b`, `0B`), Decimal(no prefix); valid range is signed i256).
 - `string`: The byte-string type. (immutable string in bytes. NOTE: no Unicode support). Literal: `"string"`.
 - `hash160`: The 160-bit hash type, and the underlying type is 20-byte byte-string(i.e. string),  Literal: `"0x1234567890abcdef1234567890abcdef12345678"`.
 - `hash256`: The 256-bit hash type, and the underlying type is 32-byte byte-string(i.e. string), Literal: `"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`.

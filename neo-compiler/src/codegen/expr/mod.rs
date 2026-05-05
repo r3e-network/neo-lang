@@ -8,7 +8,7 @@ use crate::devpack::DevPackImports;
 use crate::syntax::ast::*;
 use crate::target::opcode::OpCode;
 use crate::target::{Builder, StackItemType};
-pub(crate) use literal::parse_int_literal;
+pub(crate) use literal::{parse_int_literal, ParsedIntLiteral};
 
 mod assignment;
 mod builtin_call;

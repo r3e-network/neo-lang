@@ -72,13 +72,37 @@ fn convert_operand_named_and_void_are_none() {
 
 #[test]
 fn parse_int_decimal_hex_binary() {
-    assert_eq!(parse_int_literal("0"), Some(0));
-    assert_eq!(parse_int_literal("-42"), Some(-42));
-    assert_eq!(parse_int_literal("1_000"), Some(1000));
-    assert_eq!(parse_int_literal("0xFF"), Some(255));
-    assert_eq!(parse_int_literal("0X10"), Some(16));
-    assert_eq!(parse_int_literal("0b1010"), Some(10));
-    assert_eq!(parse_int_literal("0B11"), Some(3));
+    assert_eq!(parse_int_literal("0"), Some(ParsedIntLiteral::I128(0)));
+    assert_eq!(parse_int_literal("-42"), Some(ParsedIntLiteral::I128(-42)));
+    assert_eq!(
+        parse_int_literal("1_000"),
+        Some(ParsedIntLiteral::I128(1000))
+    );
+    assert_eq!(parse_int_literal("0xFF"), Some(ParsedIntLiteral::I128(255)));
+    assert_eq!(parse_int_literal("0X10"), Some(ParsedIntLiteral::I128(16)));
+    assert_eq!(
+        parse_int_literal("0b1010"),
+        Some(ParsedIntLiteral::I128(10))
+    );
+    assert_eq!(parse_int_literal("0B11"), Some(ParsedIntLiteral::I128(3)));
+}
+
+#[test]
+fn parse_int_accepts_signed_256_bit_range() {
+    let max_i256 = "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+    let min_i256 = "-57896044618658097711785492504343953926634992332820282019728792003956564819968";
+
+    let Some(ParsedIntLiteral::I256(max_bytes)) = parse_int_literal(max_i256) else {
+        panic!("expected max signed i256 literal to parse as PUSHINT256 bytes");
+    };
+    assert_eq!(max_bytes[31], 0x7f);
+    assert!(max_bytes[..31].iter().all(|byte| *byte == 0xff));
+
+    let Some(ParsedIntLiteral::I256(min_bytes)) = parse_int_literal(min_i256) else {
+        panic!("expected min signed i256 literal to parse as PUSHINT256 bytes");
+    };
+    assert_eq!(min_bytes[31], 0x80);
+    assert!(min_bytes[..31].iter().all(|byte| *byte == 0x00));
 }
 
 #[test]
@@ -87,6 +111,11 @@ fn parse_int_invalid() {
     assert_eq!(parse_int_literal("0x"), None);
     assert_eq!(parse_int_literal("0b"), None);
     assert_eq!(parse_int_literal("not_a_number"), None);
+    assert_eq!(
+        parse_int_literal("0x8000000000000000000000000000000000000000000000000000000000000000"),
+        None,
+        "positive literals above signed i256::MAX must be rejected"
+    );
 }
 
 #[test]
@@ -128,6 +157,22 @@ fn expr_literal_int_string() {
     .unwrap();
     assert_eq!(inst[0].opcode, OpCode::PUSHDATA1);
     assert_eq!(inst[0].operands[1..], *b"ab");
+}
+
+#[test]
+fn expr_literal_int256_emits_pushint256() {
+    let mut value_struct = HashMap::new();
+    let max_i256 = "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+    let inst = compile_expr_stub(
+        &[],
+        &[],
+        &mut value_struct,
+        &Expr::Literal(Literal::Int(max_i256.into())),
+    )
+    .unwrap();
+    assert_eq!(inst[0].opcode, OpCode::PUSHINT256);
+    assert_eq!(inst[0].operands.len(), 32);
+    assert_eq!(inst[0].operands[31], 0x7f);
 }
 
 #[test]

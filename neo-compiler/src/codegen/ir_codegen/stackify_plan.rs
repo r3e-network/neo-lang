@@ -12,7 +12,7 @@ fn is_cheap_const_literal(lit: &Literal) -> bool {
             let Some(n) = parse_int_literal(s) else {
                 return false;
             };
-            (i32::MIN as i128..=i32::MAX as i128).contains(&n)
+            n.is_i32_sized()
         }
         Literal::String(v) | Literal::Buffer(v) => v.len() <= 4,
     }

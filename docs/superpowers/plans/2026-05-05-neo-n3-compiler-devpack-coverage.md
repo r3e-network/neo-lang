@@ -25,7 +25,7 @@ Implemented compiler areas:
 - Partial storage support for contract fields and map-backed storage.
 - Partial NEP-17 example.
 
-Recently fixed in PR #1:
+Recently fixed in active PR work:
 
 - Long jump opcode classification.
 - Contract field initializers emitted in deploy bytecode.
