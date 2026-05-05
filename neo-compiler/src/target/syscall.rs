@@ -80,7 +80,7 @@ impl Syscall {
             ("callFlags", StackItemType::Integer),       // call flags
             ("args", StackItemType::Array),              // arguments
         ],
-        return_type: None, // return type
+        return_type: Some(StackItemType::Any),
         callflags: CallFlags::ReadOnly as u8,
     };
 
@@ -292,7 +292,7 @@ impl Syscall {
 
     pub const STORAGE_AS_READ_ONLY: Syscall = Syscall {
         name: "System.Storage.AsReadOnly",
-        args: &[],
+        args: &[("context", StackItemType::Array)],
         return_type: Some(StackItemType::Array), // a StorageContext struct. The underlying type of struct in `neo-vm` is Array.
         callflags: CallFlags::ReadStates as u8,
     };

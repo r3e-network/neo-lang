@@ -60,7 +60,7 @@ The first compiler integration layer uses `neo-devpack::api::ApiCatalog` to vali
 - `import runtime from "neo-devpack";`
 - `import rt from "neo-devpack/runtime";`
 
-Runtime module aliases lower to the existing `System.Runtime.*` syscall path. Unknown devpack modules are rejected during type checking. Known non-runtime modules currently emit an explicit unsupported diagnostic until storage, contract, crypto, and iterator import lowerings are implemented.
+Runtime module aliases lower to the existing `System.Runtime.*` syscall path. Storage, contract, and crypto module imports lower through a shared devpack-to-syscall mapping. Unknown devpack modules are rejected during type checking. Iterator helpers currently remain catalog-only until iterator syscall lowering is implemented.
 
 ## Testing Strategy
 

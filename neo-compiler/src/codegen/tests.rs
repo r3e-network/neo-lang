@@ -108,6 +108,75 @@ fn codegen_neo_devpack_runtime_alias_emits_syscall() {
 }
 
 #[test]
+fn codegen_neo_devpack_framework_aliases_emit_syscalls() {
+    let src = r#"
+        import s from "neo-devpack/storage";
+        import c from "neo-devpack/contract";
+        import crypto from "neo-devpack";
+
+        contract C {
+            #[safe]
+            buffer read() {
+                return s.localGet("key");
+            }
+
+            #[safe]
+            int flags() {
+                return c.getCallFlags();
+            }
+
+            #[safe]
+            bool verify(buffer pubKey, buffer signature) {
+                return crypto.checkSig(pubKey, signature);
+            }
+
+            void write() {
+                s.localPut("key", "value");
+            }
+        }
+    "#;
+    let sf = parse_source_file(src).unwrap();
+    let out = Codegen::new().codegen_source_file(&sf).unwrap();
+
+    let has_syscall = |method_name: &str, syscall: Syscall| {
+        let method = out
+            .contract_methods
+            .iter()
+            .find(|method| method.name == method_name)
+            .expect("contract method");
+        method.instructions.iter().any(|instruction| {
+            instruction.opcode == OpCode::SYSCALL
+                && instruction.operands == syscall.token().to_le_bytes()
+        })
+    };
+
+    assert!(has_syscall("read", Syscall::STORAGE_LOCAL_GET));
+    assert!(has_syscall("flags", Syscall::CONTRACT_GET_CALL_FLAGS));
+    assert!(has_syscall("verify", Syscall::CRYPTO_CHECK_SIG));
+    assert!(has_syscall("write", Syscall::STORAGE_LOCAL_PUT));
+
+    let write = out
+        .contract_methods
+        .iter()
+        .find(|method| method.name == "write")
+        .expect("write method");
+    let put_index = write
+        .instructions
+        .iter()
+        .position(|instruction| {
+            instruction.opcode == OpCode::SYSCALL
+                && instruction.operands == Syscall::STORAGE_LOCAL_PUT.token().to_le_bytes()
+        })
+        .expect("storage put syscall");
+    assert_eq!(
+        write.instructions[put_index + 1].opcode,
+        OpCode::PUSHNULL,
+        "void devpack syscall expressions must leave a disposable value for statement DROP"
+    );
+    assert_eq!(write.instructions[put_index + 2].opcode, OpCode::DROP);
+}
+
+#[test]
 fn codegen_contract_without_methods() {
     let sf = parse_source_file("contract X { int x; }").unwrap();
     let out = Codegen::new().codegen_source_file(&sf).unwrap();

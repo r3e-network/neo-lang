@@ -32,6 +32,9 @@ impl ExprGen<'_, '_> {
                 self.compile_expr(arg)?;
             }
             self.builder.emit_syscall(*syscall);
+            if syscall.return_type.is_none() {
+                self.builder.push_null();
+            }
             return Ok(());
         }
         Err(CodegenError::Unsupported(format!(

@@ -69,6 +69,38 @@ fn rejects_unknown_neo_devpack_module_import() {
 }
 
 #[test]
+fn accepts_neo_devpack_framework_import_syscalls() {
+    let src = r#"
+        import s from "neo-devpack/storage";
+        import c from "neo-devpack/contract";
+        import crypto from "neo-devpack";
+
+        contract C {
+            #[safe]
+            buffer read() {
+                return s.localGet("key");
+            }
+
+            #[safe]
+            int flags() {
+                return c.getCallFlags();
+            }
+
+            #[safe]
+            bool verify(buffer pubKey, buffer signature) {
+                return crypto.checkSig(pubKey, signature);
+            }
+
+            void write() {
+                s.localPut("key", "value");
+            }
+        }
+    "#;
+    let ast = parse_source_file(src).expect("parse");
+    ast.type_check().expect("typecheck");
+}
+
+#[test]
 fn rejects_map_with_non_primitive_key_type() {
     let src = r#"
         package demo;

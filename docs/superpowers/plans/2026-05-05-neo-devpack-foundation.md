@@ -92,3 +92,20 @@
 - [x] Validate unknown `neo-devpack/<module>` imports during type checking.
 - [x] Route runtime import aliases through existing runtime syscall typecheck, IR lowering, and legacy codegen paths.
 - [x] Document supported compiler import syntax and current non-runtime limitations.
+
+### Task 8: Framework Syscall Import Lowering
+
+**Files:**
+- Modify: `neo-compiler/src/devpack.rs`
+- Modify: `neo-compiler/src/typecheck/mod.rs`
+- Modify: `neo-compiler/src/codegen/expr/mod.rs`
+- Create: `neo-compiler/src/codegen/expr/devpack_call.rs`
+- Modify: `neo-compiler/src/codegen/expr/runtime_call.rs`
+- Modify: `neo-compiler/src/target/syscall.rs`
+- Modify: compiler tests and devpack README
+
+- [x] Add red tests for storage, contract, and crypto import aliases.
+- [x] Map devpack storage/contract/crypto methods to existing NeoVM syscall metadata.
+- [x] Type check devpack syscall arguments and return types through the shared syscall table.
+- [x] Emit syscalls from devpack import aliases and preserve a disposable value for void syscall statement expressions.
+- [x] Correct `System.Contract.Call` and `System.Storage.AsReadOnly` syscall metadata used by the devpack mapping.

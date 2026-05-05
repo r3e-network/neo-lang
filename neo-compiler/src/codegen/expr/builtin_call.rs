@@ -15,11 +15,7 @@ impl ExprGen<'_, '_> {
                     return self.compile_runtime_call(field, args);
                 }
                 if let Some(module) = self.devpack_imports.module_for_alias(pkg) {
-                    return Err(CodegenError::Unsupported(format!(
-                        "neo-devpack module `{}` is recognized, but `{}` calls are not supported by neo-compiler yet",
-                        module.as_str(),
-                        field
-                    )));
+                    return self.compile_devpack_syscall_call(module, field, args);
                 }
             }
             if self.compile_builtin_method_call(base.as_ref(), field, args)? {

@@ -20,19 +20,31 @@ It is modeled after the responsibilities of `neo-project/neo-devpack-dotnet`, ad
 - Standards index: NEP-11, NEP-17, NEP-24, NEP-26, NEP-27, NEP-29, NEP-30, NEP-31.
 - Deep validators: NEP-17 and NEP-11 ABI/event shape.
 - Templates: hello world, NEP-17 token, NEP-11 NFT, storage map, oracle consumer, upgradeable admin.
-- Compiler integration: `neo-compiler` consumes this catalog for `neo-devpack` import validation and supports `runtime` import aliases.
+- Compiler integration: `neo-compiler` consumes this catalog for `neo-devpack` import validation and supports runtime, storage, contract, and crypto syscall imports.
 
 ## Compiler Imports
 
-The compiler currently accepts direct runtime imports:
+The compiler currently accepts direct framework imports:
 
 ```neo
 import rt from "neo-devpack/runtime";
+import storage from "neo-devpack";
+import crypto from "neo-devpack";
 
 contract NetworkInfo {
     #[safe]
     int network() {
         return rt.getNetwork();
+    }
+
+    #[safe]
+    buffer read() {
+        return storage.localGet("key");
+    }
+
+    #[safe]
+    bool verify(buffer pubKey, buffer signature) {
+        return crypto.checkSig(pubKey, signature);
     }
 }
 ```
@@ -43,7 +55,7 @@ The root module form is also validated:
 import runtime from "neo-devpack";
 ```
 
-Unknown `neo-devpack/<module>` imports are rejected during type checking. Non-runtime modules are recognized by the catalog and intentionally report an explicit "not supported by neo-compiler yet" diagnostic until their syscall/native-contract lowerings are wired in.
+Unknown `neo-devpack/<module>` imports are rejected during type checking. Runtime, storage, contract, and crypto methods with direct NeoVM syscall mappings are type checked and emitted through the compiler. Iterator helpers remain catalog-only until iterator syscall lowering is added.
 
 ## Example
 
@@ -62,4 +74,4 @@ assert!(errors.iter().any(|error| error.to_string().contains("transfer")));
 
 ## Current Limits
 
-This crate is the devpack foundation. It does not yet execute NeoVM bytecode, generate debug info, lower every non-runtime framework module through imports, or run a Neo private network. Those are planned as follow-up layers after this stable API/test foundation.
+This crate is the devpack foundation. It does not yet execute NeoVM bytecode, generate debug info, lower iterator helpers through imports, or run a Neo private network. Those are planned as follow-up layers after this stable API/test foundation.

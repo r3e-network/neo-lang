@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
-use crate::devpack::{DevPackImports, DevPackModule};
+use crate::devpack::{syscall_for_module_method, DevPackImports, DevPackModule};
 use crate::syntax::ast::*;
 use crate::target::syscall::runtime_syscall_for_method;
 use crate::target::StackItemType;
@@ -244,7 +244,12 @@ fn satisfies_stack_item(ty: &Type, sit: StackItemType) -> bool {
     match sit {
         StackItemType::Boolean => matches!(ty, Type::Bool),
         StackItemType::Integer => matches!(ty, Type::Int),
-        StackItemType::ByteString => matches!(ty, Type::String | Type::Hash160 | Type::Hash256),
+        StackItemType::ByteString => {
+            matches!(
+                ty,
+                Type::String | Type::Hash160 | Type::Hash256 | Type::Buffer
+            )
+        }
         // Source often passes string literals where syscall metadata says `Buffer` (e.g. `runtime.log`).
         StackItemType::Buffer => matches!(ty, Type::Buffer | Type::String),
         StackItemType::Array => matches!(ty, Type::Array(_) | Type::Any),
@@ -896,7 +901,7 @@ impl<'a> TypeCheckContext<'a> {
                     return self.check_runtime_call(field, args, env);
                 }
                 if let Some(module) = self.devpack_imports.module_for_alias(pkg) {
-                    return self.unsupported_devpack_module_call(module, field);
+                    return self.check_devpack_syscall_call(module, field, args, env);
                 }
             }
             if let Some(ty) = self.check_builtin_method_call(env, base.as_ref(), field, args)? {
@@ -964,16 +969,38 @@ impl<'a> TypeCheckContext<'a> {
         Err(err("only package-level functions, built-in functions, struct methods, and runtime.* calls are supported"))
     }
 
-    fn unsupported_devpack_module_call(
+    fn check_devpack_syscall_call(
         &self,
         module: DevPackModule,
         method: &str,
+        args: &[Expr],
+        env: &mut FnEnv,
     ) -> Result<Type, TypeError> {
-        Err(err(format!(
-            "neo-devpack module `{}` is recognized, but `{}` calls are not supported by neo-compiler yet",
-            module.as_str(),
-            method
-        )))
+        let Some(syscall) = syscall_for_module_method(module, method) else {
+            return Err(err(format!(
+                "neo-devpack module `{}` is recognized, but `{}` calls are not supported by neo-compiler yet",
+                module.as_str(),
+                method
+            )));
+        };
+        if args.len() != syscall.args.len() {
+            return Err(err(format!(
+                "{}.{method} expects {} argument(s), got {}",
+                module.as_str(),
+                syscall.args.len(),
+                args.len()
+            )));
+        }
+        for (expr, (_, sit)) in args.iter().zip(syscall.args.iter()) {
+            let ty = self.infer_expr(env, expr)?;
+            if !satisfies_stack_item(&ty, *sit) {
+                return Err(err(format!(
+                    "{}.{method} argument type mismatch: expected `{sit:?}`, got `{ty:?}`",
+                    module.as_str()
+                )));
+            }
+        }
+        Ok(syscall_return_type(&syscall))
     }
 
     /// `self.<map>.has` / `self.<map>.remove` on a contract storage `map` field; otherwise [`None`].

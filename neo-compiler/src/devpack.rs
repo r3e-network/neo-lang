@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use neo_devpack::api::ApiCatalog;
 
 use crate::syntax::ast::ImportDecl;
+use crate::target::syscall::Syscall;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DevPackModule {
@@ -90,6 +91,33 @@ fn resolve_module(module_name: &str) -> Result<DevPackModule, String> {
     })
 }
 
+pub fn syscall_for_module_method(module: DevPackModule, method: &str) -> Option<Syscall> {
+    Some(match (module, method) {
+        (DevPackModule::Storage, "getContext") => Syscall::STORAGE_GET_CONTEXT,
+        (DevPackModule::Storage, "getReadOnlyContext") => Syscall::STORAGE_GET_READ_ONLY_CONTEXT,
+        (DevPackModule::Storage, "asReadOnly") => Syscall::STORAGE_AS_READ_ONLY,
+        (DevPackModule::Storage, "get") => Syscall::STORAGE_GET,
+        (DevPackModule::Storage, "put") => Syscall::STORAGE_PUT,
+        (DevPackModule::Storage, "delete") => Syscall::STORAGE_DELETE,
+        (DevPackModule::Storage, "find") => Syscall::STORAGE_FIND,
+        (DevPackModule::Storage, "localGet") => Syscall::STORAGE_LOCAL_GET,
+        (DevPackModule::Storage, "localPut") => Syscall::STORAGE_LOCAL_PUT,
+        (DevPackModule::Storage, "localDelete") => Syscall::STORAGE_LOCAL_DELETE,
+        (DevPackModule::Storage, "localFind") => Syscall::STORAGE_LOCAL_FIND,
+        (DevPackModule::Contract, "call") => Syscall::CONTRACT_CALL,
+        (DevPackModule::Contract, "getCallFlags") => Syscall::CONTRACT_GET_CALL_FLAGS,
+        (DevPackModule::Contract, "createStandardAccount") => {
+            Syscall::CONTRACT_CREATE_STANDARD_ACCOUNT
+        }
+        (DevPackModule::Contract, "createMultisigAccount") => {
+            Syscall::CONTRACT_CREATE_MULTISIG_ACCOUNT
+        }
+        (DevPackModule::Crypto, "checkSig") => Syscall::CRYPTO_CHECK_SIG,
+        (DevPackModule::Crypto, "checkMultisig") => Syscall::CRYPTO_CHECK_MULTISIG,
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,6 +144,26 @@ mod tests {
         assert_eq!(
             imports.module_for_alias("storage"),
             Some(DevPackModule::Storage)
+        );
+    }
+
+    #[test]
+    fn maps_supported_framework_methods_to_syscalls() {
+        assert_eq!(
+            syscall_for_module_method(DevPackModule::Storage, "localGet"),
+            Some(Syscall::STORAGE_LOCAL_GET)
+        );
+        assert_eq!(
+            syscall_for_module_method(DevPackModule::Contract, "getCallFlags"),
+            Some(Syscall::CONTRACT_GET_CALL_FLAGS)
+        );
+        assert_eq!(
+            syscall_for_module_method(DevPackModule::Crypto, "checkSig"),
+            Some(Syscall::CRYPTO_CHECK_SIG)
+        );
+        assert_eq!(
+            syscall_for_module_method(DevPackModule::Iterator, "next"),
+            None
         );
     }
 }

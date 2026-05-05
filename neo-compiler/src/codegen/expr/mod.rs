@@ -15,6 +15,7 @@ mod builtin_call;
 mod builtin_function;
 mod builtin_method;
 mod contract_storage;
+mod devpack_call;
 mod literal;
 mod member;
 mod operator;
