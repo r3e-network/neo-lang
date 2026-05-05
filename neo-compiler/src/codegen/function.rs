@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use crate::codegen::env::VarEnv;
 use crate::codegen::expr::ExprGen;
 use crate::codegen::CodegenError;
+use crate::devpack::DevPackImports;
 use crate::ir;
 use crate::syntax::ast::*;
 use crate::target::opcode::OpCode;
@@ -34,6 +35,9 @@ pub struct FunctionCompiler<'a> {
 
     /// Same-file top-level functions: `name` → arity (see [`ExprGen::package_fn_arity`]).
     package_fn_arity: &'a HashMap<String, usize>,
+
+    /// Imported `neo-devpack` module aliases, if any.
+    devpack_imports: &'a DevPackImports,
 }
 
 pub struct CompliledFunction {
@@ -49,6 +53,7 @@ impl<'a> FunctionCompiler<'a> {
         structs: &'a [StructDecl],
         contract_fields: Option<&'a [ContractField]>,
         package_fn_arity: &'a HashMap<String, usize>,
+        devpack_imports: &'a DevPackImports,
     ) -> Result<Self, CodegenError> {
         let env = VarEnv::new(&func.params)?;
         let arg_count = func.params.len() as u8;
@@ -71,6 +76,7 @@ impl<'a> FunctionCompiler<'a> {
             initslot_instruction_index,
             pending_call_l: Vec::new(),
             package_fn_arity,
+            devpack_imports,
         })
     }
 
@@ -109,9 +115,10 @@ impl<'a> FunctionCompiler<'a> {
             env: &mut self.env,
             structs: self.structs,
             value_struct: &mut self.value_struct,
-            contract_fields: self.contract_fields.as_deref(),
+            contract_fields: self.contract_fields,
             pending_call_l: &mut self.pending_call_l,
             package_fn_arity: self.package_fn_arity,
+            devpack_imports: self.devpack_imports,
         }
     }
 
@@ -323,19 +330,47 @@ pub fn compile_function(
     contract_fields: Option<&[ContractField]>,
     package_fn_arity: &HashMap<String, usize>,
 ) -> Result<CompliledFunction, CodegenError> {
+    let devpack_imports = DevPackImports::default();
+    compile_function_with_devpack_imports(
+        func,
+        structs,
+        contract_fields,
+        package_fn_arity,
+        &devpack_imports,
+    )
+}
+
+pub fn compile_function_with_devpack_imports(
+    func: &FunctionDecl,
+    structs: &[StructDecl],
+    contract_fields: Option<&[ContractField]>,
+    package_fn_arity: &HashMap<String, usize>,
+    devpack_imports: &DevPackImports,
+) -> Result<CompliledFunction, CodegenError> {
     // First-phase SSA IR pipeline: only for basic statements (var/assign/if/while/return) and
     // a limited expression subset. On unsupported constructs, fall back to the legacy AST codegen.
     if should_use_ir_pipeline(func) {
-        if let Ok(mut fir) =
-            ir::lower::lower_function_to_ir(func, structs, contract_fields, package_fn_arity)
-        {
+        if let Ok(mut fir) = ir::lower::lower_function_to_ir_with_devpack_imports(
+            func,
+            structs,
+            contract_fields,
+            package_fn_arity,
+            devpack_imports,
+        ) {
             fir.optimize();
             let compiled = fir.compile_ir(func.params.len() as u8)?;
             return Ok(compiled);
         }
     }
 
-    FunctionCompiler::new(func, structs, contract_fields, package_fn_arity)?.compile()
+    FunctionCompiler::new(
+        func,
+        structs,
+        contract_fields,
+        package_fn_arity,
+        devpack_imports,
+    )?
+    .compile()
 }
 
 fn should_use_ir_pipeline(func: &FunctionDecl) -> bool {

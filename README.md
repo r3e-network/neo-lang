@@ -5,9 +5,9 @@ It is a high-level programming language that is designed to be easy to use.
 
 ## Quick Start
 
-```
+```neo,compile
 // Define a contract. Any `neo-lang` program must be a(only one) contract.
-#[auther("AuthorName")]
+#[author("AuthorName")]
 #[version("0.0.1")]
 contract Example {
     // Declare a constant string property
@@ -22,27 +22,43 @@ contract Example {
     // Declare a map property.
     map[hash160, int] balances;
 
+    event Transfer(hash160 source, hash160 dest, int amount);
+
     // Declare a method
     bool transfer(hash160 source, hash160 dest, int amount) {
         assert(amount > 0, "Amount must be greater than 0");
-        // ...
+        emit Transfer(source, dest, amount);
         return true; // or return false;
     }
 }
 
 ```
 
+## DevPack
+
+This workspace includes `neo-devpack`, a Neo N3 development pack foundation for `neo-lang`.
+
+The devpack provides:
+- Typed Neo N3 API metadata for runtime, storage, contract, crypto, iterator, and native contracts.
+- Manifest helpers for Neo N3 ABI artifacts.
+- NEP standard discovery and compatibility checks.
+- Built-in contract templates for common Neo contract patterns.
+- Fast testing primitives for storage, notifications, and gas accounting.
+
+See `neo-devpack/README.md` and `docs/superpowers/plans/2026-05-05-neo-n3-compiler-devpack-coverage.md` for the current coverage plan and follow-up layers.
+
 ## Built-in Types
 `neo-lang` is strongly typed language, and the built-in types are:
 - `null`: The null value. Literal: `null`.
 - `bool`: The boolean type. Literal: `true` or `false`.
-- `int`: The integer type. (256-bit signed integer, litteral: prefix: Hex(`0x`, `0X`), Binary(`0b`, `0B`), Decimal(no prefix)).
+- `int`: The integer type. (256-bit signed integer, literal prefixes: Hex(`0x`, `0X`), Binary(`0b`, `0B`), Decimal(no prefix); valid range is signed i256).
 - `string`: The byte-string type. (immutable string in bytes. NOTE: no Unicode support). Literal: `"string"`.
 - `hash160`: The 160-bit hash type, and the underlying type is 20-byte byte-string(i.e. string),  Literal: `"0x1234567890abcdef1234567890abcdef12345678"`.
 - `hash256`: The 256-bit hash type, and the underlying type is 32-byte byte-string(i.e. string), Literal: `"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`.
 - `type[]`: The array type. (dynamic array for generic type). Literal: `int[] { 1, 2, 3 }` (element type required; use `{`…`}` for elements, not `[`…`]`).
-- `map[key, value]`: The map type. key-type is limited to `bool`, `int`, `string`, `hash160`, `hash256`, and value-type can be any type. Literal: `map[string, string] { "key1": "value1", "key2": "value2" }`, or `map[int, string] { 1: "value1", 2: "value2" }`.
+- `map[key, value]`: The map type. key-type is limited to `bool`, `int`, `string`, `hash160`, `hash256`, `buffer`, and value-type can be any type. Literal: `map[string, string] { "key1": "value1", "key2": "value2" }`, or `map[int, string] { 1: "value1", 2: "value2" }`.
 - `buffer`: The buffer type. (dynamic bytes buffer). Literal: `b"1234567890"`.
+- `iterator`: The Neo interop iterator handle type. It is primarily used for ABI signatures such as NEP-11 `tokens()` / `tokensOf(...)`.
 - `any`: The any type. Literal: any of the above types.
 
 ## Self-defined Types
@@ -264,6 +280,8 @@ int totalSupply = 10000;
 map[hash160, int] balances;
 ```
 
+Explicit mutable property initializers are emitted into the contract `_deploy(data, update)` routine and are written to storage only on the first deployment (`update == false`). If no `_deploy` method is declared, the compiler synthesizes one. If a user-defined `_deploy` method with a `bool update` parameter exists, the compiler prepends the initializer writes before the user body.
+
 Mutable property read and write will cause contract storage load/store operations, and these operations are expensive.
 Therefore, it is recommended to declare as many constant properties as possible to reduce the contract storage usage or
 avoid load/store multiple times if data are not changed.
@@ -330,18 +348,26 @@ The value(or value list) is optional.
 
 Example:
 ```
-#[auther("AuthorName")]
+#[author("AuthorName")]
 #[version("0.0.1")]
+#[description("Example contract")]
+#[supportedStandards("NEP-17")]
 contract Example {
     // ...
 }
 ```
 
 ### Built-in Attributes
-- `#[auther("AuthorName")]`: For contract, the author.
-- `#[version("0.0.1")]`: For contract, the version.
-- `#[pure]`: For contract method, mark the method as pure(never store data, never emit events, never call other contracts).
-- `#[noreentrant]`: For contract method, mark the method as non-reentrant.
+- `#[author("AuthorName")]`: For contract, emits `extra.author` in the manifest. The misspelled legacy form `#[auther(...)]` is accepted as an alias.
+- `#[email("dev@example.com")]`: For contract, emits `extra.email`.
+- `#[description("...")]`: For contract, emits `extra.description`.
+- `#[source("https://...")]`: For contract, emits `extra.source`.
+- `#[version("0.0.1")]`: For contract, emits `extra.version`.
+- `#[supportedStandards("NEP-17", "NEP-11")]`: For contract, emits manifest `supportedstandards`; NEP-17 and NEP-11 ABI/event shapes are validated during build.
+- `#[permission(contract, method...)]`: For contract, emits manifest permissions. Use `#[permission("*")]` to allow all contracts and methods, or pass a contract hash/group public key plus method names.
+- `#[trust(contract...)]`: For contract, emits manifest trusts. Use `#[trust("*")]` to trust all.
+- `#[group(pubkey, signature)]`: For contract, emits a manifest group entry.
+- `#[safe]`: For contract method, marks the ABI method as safe.
 
 
 ### Package

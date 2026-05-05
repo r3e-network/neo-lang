@@ -959,7 +959,7 @@ impl OpCode {
     }
 
     pub fn is_jump_long(&self) -> bool {
-        self.is_jump() && (*self as u8 & 0x00) != 1
+        self.is_jump() && (*self as u8 & 0x01) == 1
     }
 
     pub fn is_call(&self) -> bool {

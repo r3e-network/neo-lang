@@ -62,8 +62,9 @@ mod tests;
 
 use std::collections::HashMap;
 
-use crate::codegen::function::{compile_function, lower_struct_method};
+use crate::codegen::function::{compile_function_with_devpack_imports, lower_struct_method};
 use crate::codegen::opt::Optimizer;
+use crate::devpack::DevPackImports;
 use crate::syntax::ast::*;
 use crate::target::opcode::OpCode;
 use crate::target::Instruction;
@@ -217,6 +218,12 @@ pub enum CodegenError {
 
 pub struct Codegen {}
 
+impl Default for Codegen {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Codegen {
     pub fn new() -> Self {
         Self {}
@@ -229,6 +236,8 @@ impl Codegen {
         source: &SourceFile,
     ) -> Result<CompiledSourceFile, CodegenError> {
         source.type_check()?;
+        let devpack_imports =
+            DevPackImports::from_imports(&source.imports).map_err(CodegenError::Unsupported)?;
         let get_contract_fields = |contract: &ContractDecl| {
             contract
                 .members
@@ -261,7 +270,13 @@ impl Codegen {
 
         let mut package_functions = Vec::with_capacity(source.functions.len());
         for func in &source.functions {
-            let compiled = compile_function(func, &source.structs, None, &package_fn_arity)?;
+            let compiled = compile_function_with_devpack_imports(
+                func,
+                &source.structs,
+                None,
+                &package_fn_arity,
+                &devpack_imports,
+            )?;
             package_functions.push(CompiledFunction {
                 name: func.name.clone(),
                 contract: None,
@@ -274,8 +289,13 @@ impl Codegen {
         for struct_decl in &source.structs {
             for method in &struct_decl.methods {
                 let lowered = lower_struct_method(&struct_decl.name, method);
-                let compiled =
-                    compile_function(&lowered, &source.structs, None, &package_fn_arity)?;
+                let compiled = compile_function_with_devpack_imports(
+                    &lowered,
+                    &source.structs,
+                    None,
+                    &package_fn_arity,
+                    &devpack_imports,
+                )?;
                 struct_methods.push(CompiledFunction {
                     name: lowered.name.clone(),
                     contract: None,
@@ -287,13 +307,45 @@ impl Codegen {
 
         let mut contract_methods = Vec::new();
         if let Some(contract_decl) = &source.contract {
+            let has_user_deploy = contract_decl.members.iter().any(|member| {
+                matches!(member, ContractMember::Function(method) if method.name == "_deploy")
+            });
+            if !has_user_deploy {
+                if let Some(deploy) =
+                    synthetic_storage_initializer_deploy(&contract_decl.name, &contract_fields)?
+                {
+                    let compiled = compile_function_with_devpack_imports(
+                        &deploy,
+                        &source.structs,
+                        storage_fields,
+                        &package_fn_arity,
+                        &devpack_imports,
+                    )?;
+                    contract_methods.push(CompiledFunction {
+                        name: deploy.name.clone(),
+                        contract: Some(contract_decl.name.clone()),
+                        instructions: compiled.instructions,
+                        call_patches: compiled.call_patches,
+                    });
+                }
+            }
+
             for member in &contract_decl.members {
                 if let ContractMember::Function(method) = member {
-                    let compiled = compile_function(
+                    let augmented_deploy;
+                    let method = if method.name == "_deploy" {
+                        augmented_deploy =
+                            prepend_storage_initializers_to_deploy(method, &contract_fields)?;
+                        augmented_deploy.as_ref().unwrap_or(method)
+                    } else {
+                        method
+                    };
+                    let compiled = compile_function_with_devpack_imports(
                         method,
                         &source.structs,
                         storage_fields,
                         &package_fn_arity,
+                        &devpack_imports,
                     )?;
                     contract_methods.push(CompiledFunction {
                         name: method.name.clone(),
@@ -314,4 +366,93 @@ impl Codegen {
         compiled.link_call_l_patches()?;
         Ok(compiled)
     }
+}
+
+fn synthetic_storage_initializer_deploy(
+    _contract_name: &str,
+    contract_fields: &[ContractField],
+) -> Result<Option<FunctionDecl>, CodegenError> {
+    let Some(init_block) = storage_initializer_block(contract_fields)? else {
+        return Ok(None);
+    };
+    Ok(Some(FunctionDecl {
+        attributes: vec![],
+        return_ty: Type::Void,
+        name: "_deploy".into(),
+        params: vec![
+            Param {
+                ty: Type::Any,
+                name: "data".into(),
+            },
+            Param {
+                ty: Type::Bool,
+                name: "update".into(),
+            },
+        ],
+        body: deploy_body_with_initializers(init_block, Block { stmts: vec![] }),
+    }))
+}
+
+fn prepend_storage_initializers_to_deploy(
+    method: &FunctionDecl,
+    contract_fields: &[ContractField],
+) -> Result<Option<FunctionDecl>, CodegenError> {
+    let has_update_param = method
+        .params
+        .iter()
+        .any(|param| param.name == "update" && param.ty == Type::Bool);
+    if !has_update_param {
+        return Ok(None);
+    }
+    let Some(init_block) = storage_initializer_block(contract_fields)? else {
+        return Ok(None);
+    };
+    let mut method = method.clone();
+    let original_body = method.body;
+    method.body = deploy_body_with_initializers(init_block, original_body);
+    Ok(Some(method))
+}
+
+fn deploy_body_with_initializers(init_block: Block, mut original_body: Block) -> Block {
+    let mut stmts = vec![Stmt::If {
+        cond: Expr::Unary {
+            op: UnaryOp::Not,
+            expr: Box::new(Expr::Ident("update".into())),
+        },
+        then_block: init_block,
+        else_block: None,
+    }];
+    stmts.append(&mut original_body.stmts);
+    Block { stmts }
+}
+
+fn storage_initializer_block(
+    contract_fields: &[ContractField],
+) -> Result<Option<Block>, CodegenError> {
+    let mut stmts = Vec::new();
+    for field in contract_fields {
+        let Some(value) = field.init.clone() else {
+            continue;
+        };
+        if field.ty.is_map() {
+            return Err(CodegenError::Unsupported(format!(
+                "contract map field `{}` cannot have an initializer",
+                field.name
+            )));
+        }
+        if field.ty.is_array() {
+            return Err(CodegenError::Unsupported(
+                "contract cannot have array fields".into(),
+            ));
+        }
+        stmts.push(Stmt::Expr(Expr::Assign {
+            target: Box::new(Expr::Member {
+                base: Box::new(Expr::Self_),
+                field: field.name.clone(),
+            }),
+            op: AssignOp::Assign,
+            value: Box::new(value),
+        }));
+    }
+    Ok((!stmts.is_empty()).then_some(Block { stmts }))
 }

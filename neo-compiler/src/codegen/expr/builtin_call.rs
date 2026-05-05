@@ -11,8 +11,11 @@ impl ExprGen<'_, '_> {
     ) -> Result<(), CodegenError> {
         if let Expr::Member { base, field } = callee {
             if let Expr::Ident(pkg) = base.as_ref() {
-                if pkg == "runtime" {
+                if self.devpack_imports.is_runtime_alias(pkg) {
                     return self.compile_runtime_call(field, args);
+                }
+                if let Some(module) = self.devpack_imports.module_for_alias(pkg) {
+                    return self.compile_devpack_syscall_call(module, field, args);
                 }
             }
             if self.compile_builtin_method_call(base.as_ref(), field, args)? {

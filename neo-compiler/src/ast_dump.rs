@@ -40,12 +40,12 @@ impl<'a, Write: io::Write> AstDump<'a, Write> {
 
         for s in &sf.structs {
             index += 1;
-            self.dump_struct_decl(&anc, index == n, s)?;
+            self.dump_struct_decl(anc, index == n, s)?;
         }
 
         for f in &sf.functions {
             index += 1;
-            self.dump_function_decl(&anc, index == n, f)?;
+            self.dump_function_decl(anc, index == n, f)?;
         }
 
         if let Some(ref c) = sf.contract {
@@ -235,11 +235,7 @@ impl<'a, Write: io::Write> AstDump<'a, Write> {
     ) -> io::Result<()> {
         match expr {
             Expr::Literal(lit) => {
-                self.tree_line(
-                    ancestors,
-                    is_last,
-                    &format!("{label}: Literal {}", lit.to_string()),
-                )?;
+                self.tree_line(ancestors, is_last, &format!("{label}: Literal {}", lit))?;
             }
             Expr::Ident(name) => {
                 self.tree_line(ancestors, is_last, &format!("{label}: Ident `{name}`"))?;
@@ -248,40 +244,24 @@ impl<'a, Write: io::Write> AstDump<'a, Write> {
                 self.tree_line(ancestors, is_last, &format!("{label}: self"))?;
             }
             Expr::Binary { op, left, right } => {
-                self.tree_line(
-                    ancestors,
-                    is_last,
-                    &format!("{label}: Binary `{}`", op.to_string()),
-                )?;
+                self.tree_line(ancestors, is_last, &format!("{label}: Binary `{}`", op))?;
                 let anc = extend_ancestors(ancestors, is_last);
                 self.dump_expr(&anc, false, "left", left)?;
                 self.dump_expr(&anc, true, "right", right)?;
             }
             Expr::Unary { op, expr } => {
-                self.tree_line(
-                    ancestors,
-                    is_last,
-                    &format!("{label}: Unary `{}`", op.to_string()),
-                )?;
+                self.tree_line(ancestors, is_last, &format!("{label}: Unary `{}`", op))?;
                 let anc = extend_ancestors(ancestors, is_last);
                 self.dump_expr(&anc, true, "expr", expr)?;
             }
             Expr::Assign { target, op, value } => {
-                self.tree_line(
-                    ancestors,
-                    is_last,
-                    &format!("{label}: Assign `{}`", op.to_string()),
-                )?;
+                self.tree_line(ancestors, is_last, &format!("{label}: Assign `{}`", op))?;
                 let anc = extend_ancestors(ancestors, is_last);
                 self.dump_expr(&anc, false, "target", target)?;
                 self.dump_expr(&anc, true, "value", value)?;
             }
             Expr::Cast { expr, ty } => {
-                self.tree_line(
-                    ancestors,
-                    is_last,
-                    &format!("{label}: Cast `as {}`", ty.to_string()),
-                )?;
+                self.tree_line(ancestors, is_last, &format!("{label}: Cast `as {}`", ty))?;
                 let anc = extend_ancestors(ancestors, is_last);
                 self.dump_expr(&anc, true, "expr", expr)?;
             }
@@ -432,11 +412,7 @@ impl<'a, Write: io::Write> AstDump<'a, Write> {
         }
 
         index += 1;
-        self.tree_line(
-            &anc,
-            index == total,
-            &format!("return: {}", f.return_ty.to_string()),
-        )?;
+        self.tree_line(&anc, index == total, &format!("return: {}", f.return_ty))?;
 
         index += 1;
         self.dump_param_list(&anc, index == total, &f.params, "params")?;

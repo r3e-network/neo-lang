@@ -1,6 +1,7 @@
 //! Neo-lang compiler.
 
 pub mod codegen;
+pub mod devpack;
 pub mod ir;
 pub mod syntax;
 pub mod target;

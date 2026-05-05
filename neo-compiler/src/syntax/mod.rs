@@ -100,7 +100,7 @@ mod tests {
     #[test]
     fn contract_with_attributes() {
         let source = r#"
-        #[auther("AuthorName")]
+        #[author("AuthorName")]
         #[version("0.0.1")]
         contract Example {
         }
@@ -109,7 +109,7 @@ mod tests {
         let contract = sf.contract.as_ref().unwrap();
         assert_eq!(contract.name, "Example");
         assert_eq!(contract.attributes.len(), 2);
-        assert_eq!(contract.attributes[0].name, "auther");
+        assert_eq!(contract.attributes[0].name, "author");
         assert_eq!(contract.attributes[0].args, vec!["AuthorName".to_string()]);
         assert_eq!(contract.attributes[1].name, "version");
         assert_eq!(contract.attributes[1].args, vec!["0.0.1".to_string()]);

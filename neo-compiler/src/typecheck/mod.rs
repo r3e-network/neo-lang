@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
+use crate::devpack::{syscall_for_module_method, DevPackImports, DevPackModule};
 use crate::syntax::ast::*;
 use crate::target::syscall::runtime_syscall_for_method;
 use crate::target::StackItemType;
@@ -26,6 +27,8 @@ fn err(s: impl std::fmt::Display) -> TypeError {
 
 impl SourceFile {
     pub(crate) fn type_check(&self) -> Result<(), TypeError> {
+        let devpack_imports = DevPackImports::from_imports(&self.imports).map_err(err)?;
+
         let mut structs: HashMap<String, &StructDecl> = HashMap::new();
         for struct_decl in &self.structs {
             if structs
@@ -79,9 +82,11 @@ impl SourceFile {
             package_fns: &package_fns,
             events: &events,
             contract_fields,
+            devpack_imports: &devpack_imports,
         };
 
         self.check_source_file_map_types()?;
+        ctx.check_contract_field_initializers()?;
 
         for func in &self.functions {
             ctx.check_function(func, FnType::Package)?;
@@ -161,6 +166,7 @@ struct TypeCheckContext<'a> {
     package_fns: &'a HashMap<String, &'a FunctionDecl>,
     events: &'a HashMap<String, &'a EventDecl>,
     contract_fields: &'a [ContractField],
+    devpack_imports: &'a DevPackImports,
 }
 
 enum FnType {
@@ -239,13 +245,19 @@ fn satisfies_stack_item(ty: &Type, sit: StackItemType) -> bool {
     match sit {
         StackItemType::Boolean => matches!(ty, Type::Bool),
         StackItemType::Integer => matches!(ty, Type::Int),
-        StackItemType::ByteString => matches!(ty, Type::String | Type::Hash160 | Type::Hash256),
+        StackItemType::ByteString => {
+            matches!(
+                ty,
+                Type::String | Type::Hash160 | Type::Hash256 | Type::Buffer
+            )
+        }
         // Source often passes string literals where syscall metadata says `Buffer` (e.g. `runtime.log`).
         StackItemType::Buffer => matches!(ty, Type::Buffer | Type::String),
         StackItemType::Array => matches!(ty, Type::Array(_) | Type::Any),
         StackItemType::Map => matches!(ty, Type::Map { .. } | Type::Any),
         StackItemType::Any => true,
-        StackItemType::Pointer | StackItemType::InteropInterface => false,
+        StackItemType::InteropInterface => matches!(ty, Type::Any),
+        StackItemType::Pointer => false,
     }
 }
 
@@ -268,7 +280,38 @@ fn syscall_return_type(syscall: &crate::target::syscall::Syscall) -> Type {
     }
 }
 
+fn contract_field_init_type_matches(init_ty: &Type, field_ty: &Type) -> bool {
+    init_ty.can_assign_to(field_ty)
+        || matches!(
+            (init_ty, field_ty),
+            (Type::String, Type::Hash160 | Type::Hash256 | Type::Buffer)
+        )
+}
+
 impl<'a> TypeCheckContext<'a> {
+    fn check_contract_field_initializers(&self) -> Result<(), TypeError> {
+        for field in self.contract_fields {
+            let Some(init) = &field.init else {
+                continue;
+            };
+            if field.ty.is_map() {
+                return Err(err(format!(
+                    "contract map field `{}` cannot have an initializer",
+                    field.name
+                )));
+            }
+            let mut env = FnEnv::new(true);
+            let init_ty = self.infer_expr(&mut env, init)?;
+            if !contract_field_init_type_matches(&init_ty, &field.ty) {
+                return Err(err(format!(
+                    "contract field `{}` initializer type mismatch: expected `{:?}`, got `{init_ty:?}`",
+                    field.name, field.ty
+                )));
+            }
+        }
+        Ok(())
+    }
+
     fn check_function(&self, func: &FunctionDecl, fn_type: FnType) -> Result<(), TypeError> {
         let is_contract_fn = matches!(fn_type, FnType::ContractMethod { .. });
         let mut env = FnEnv::new(is_contract_fn);
@@ -586,16 +629,14 @@ impl<'a> TypeCheckContext<'a> {
     }
 
     fn infer_expr_member_self(&self, env: &FnEnv, field: &str) -> Result<Type, TypeError> {
-        if env.is_contract_fn {
-            if !self.contract_fields.is_empty() {
-                if let Some(cf) = self.contract_fields.iter().find(|f| f.name == field) {
-                    if cf.ty.is_map() {
-                        return Err(err(format!(
+        if env.is_contract_fn && !self.contract_fields.is_empty() {
+            if let Some(cf) = self.contract_fields.iter().find(|f| f.name == field) {
+                if cf.ty.is_map() {
+                    return Err(err(format!(
                             "use `self.{field}[key]` for contract map fields (whole-field load is not supported)"
                         )));
-                    }
-                    return Ok(cf.ty.clone());
                 }
+                return Ok(cf.ty.clone());
             }
         }
         let struct_name = env.value_struct.get("self").ok_or_else(|| {
@@ -889,8 +930,11 @@ impl<'a> TypeCheckContext<'a> {
     fn check_call(&self, env: &mut FnEnv, callee: &Expr, args: &[Expr]) -> Result<Type, TypeError> {
         if let Expr::Member { base, field } = callee {
             if let Expr::Ident(pkg) = base.as_ref() {
-                if pkg == "runtime" {
+                if self.devpack_imports.is_runtime_alias(pkg) {
                     return self.check_runtime_call(field, args, env);
+                }
+                if let Some(module) = self.devpack_imports.module_for_alias(pkg) {
+                    return self.check_devpack_syscall_call(module, field, args, env);
                 }
             }
             if let Some(ty) = self.check_builtin_method_call(env, base.as_ref(), field, args)? {
@@ -958,6 +1002,40 @@ impl<'a> TypeCheckContext<'a> {
         Err(err("only package-level functions, built-in functions, struct methods, and runtime.* calls are supported"))
     }
 
+    fn check_devpack_syscall_call(
+        &self,
+        module: DevPackModule,
+        method: &str,
+        args: &[Expr],
+        env: &mut FnEnv,
+    ) -> Result<Type, TypeError> {
+        let Some(syscall) = syscall_for_module_method(module, method) else {
+            return Err(err(format!(
+                "neo-devpack module `{}` is recognized, but `{}` calls are not supported by neo-compiler yet",
+                module.as_str(),
+                method
+            )));
+        };
+        if args.len() != syscall.args.len() {
+            return Err(err(format!(
+                "{}.{method} expects {} argument(s), got {}",
+                module.as_str(),
+                syscall.args.len(),
+                args.len()
+            )));
+        }
+        for (expr, (_, sit)) in args.iter().zip(syscall.args.iter()) {
+            let ty = self.infer_expr(env, expr)?;
+            if !satisfies_stack_item(&ty, *sit) {
+                return Err(err(format!(
+                    "{}.{method} argument type mismatch: expected `{sit:?}`, got `{ty:?}`",
+                    module.as_str()
+                )));
+            }
+        }
+        Ok(syscall_return_type(&syscall))
+    }
+
     /// `self.<map>.has` / `self.<map>.remove` on a contract storage `map` field; otherwise [`None`].
     fn check_contract_storage_map_method(
         &self,
@@ -1006,7 +1084,7 @@ impl<'a> TypeCheckContext<'a> {
                     return Err(err(format!("contract doesn't have field `{field}`")));
                 };
                 if let Type::Map { key, .. } = &cf.ty {
-                    return self.check_contract_storage_map_method(&key, method, args, env);
+                    return self.check_contract_storage_map_method(key, method, args, env);
                 }
             }
         };
@@ -1177,7 +1255,7 @@ impl<'a> TypeCheckContext<'a> {
                         "`assert` second argument must be string, got `{t1:?}`"
                     )));
                 }
-                return Ok(Some(Type::Void));
+                Ok(Some(Type::Void))
             }
             "abort" => {
                 if args.len() != 1 {
@@ -1187,7 +1265,7 @@ impl<'a> TypeCheckContext<'a> {
                 if t0 != Type::String {
                     return Err(err(format!("`abort` expects string, got `{t0:?}`")));
                 }
-                return Ok(Some(Type::Void));
+                Ok(Some(Type::Void))
             }
             "min" | "max" => {
                 if args.len() != 2 {
@@ -1200,7 +1278,7 @@ impl<'a> TypeCheckContext<'a> {
                         "`{name}` expects two int arguments, got `{t0:?}` and `{t1:?}`"
                     )));
                 }
-                return Ok(Some(Type::Int));
+                Ok(Some(Type::Int))
             }
             _ => Ok(None),
         }

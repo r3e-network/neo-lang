@@ -4,16 +4,18 @@ use std::collections::HashMap;
 
 use crate::codegen::env::*;
 use crate::codegen::CodegenError;
+use crate::devpack::DevPackImports;
 use crate::syntax::ast::*;
 use crate::target::opcode::OpCode;
 use crate::target::{Builder, StackItemType};
-pub(crate) use literal::parse_int_literal;
+pub(crate) use literal::{parse_int_literal, ParsedIntLiteral};
 
 mod assignment;
 mod builtin_call;
 mod builtin_function;
 mod builtin_method;
 mod contract_storage;
+mod devpack_call;
 mod literal;
 mod member;
 mod operator;
@@ -40,6 +42,9 @@ pub(crate) struct ExprGen<'a, 'b> {
 
     /// Top-level `fn name(...)` in the same source file: `name` → parameter count (for `name(...)` → `CALL_L`).
     pub(crate) package_fn_arity: &'b HashMap<String, usize>,
+
+    /// Imported `neo-devpack` module aliases, if any.
+    pub(crate) devpack_imports: &'a DevPackImports,
 }
 
 impl<'a, 'b> ExprGen<'a, 'b> {

@@ -80,7 +80,7 @@ impl Syscall {
             ("callFlags", StackItemType::Integer),       // call flags
             ("args", StackItemType::Array),              // arguments
         ],
-        return_type: None, // return type
+        return_type: Some(StackItemType::Any),
         callflags: CallFlags::ReadOnly as u8,
     };
 
@@ -127,6 +127,22 @@ impl Syscall {
             ("signatures", StackItemType::Array), // signatures, 64 bytes string array
         ],
         return_type: Some(StackItemType::Boolean),
+        callflags: CallFlags::None as u8,
+    };
+
+    // --- System.Iterator.*  ---
+
+    pub const ITERATOR_NEXT: Syscall = Syscall {
+        name: "System.Iterator.Next",
+        args: &[("iterator", StackItemType::InteropInterface)],
+        return_type: Some(StackItemType::Boolean),
+        callflags: CallFlags::None as u8,
+    };
+
+    pub const ITERATOR_VALUE: Syscall = Syscall {
+        name: "System.Iterator.Value",
+        args: &[("iterator", StackItemType::InteropInterface)],
+        return_type: Some(StackItemType::Any),
         callflags: CallFlags::None as u8,
     };
 
@@ -208,7 +224,7 @@ impl Syscall {
 
     pub const RUNTIME_CHECK_WITNESS: Syscall = Syscall {
         name: "System.Runtime.CheckWitness",
-        args: &[("hashOrPubkey", StackItemType::Buffer)],
+        args: &[("hashOrPubkey", StackItemType::ByteString)],
         return_type: Some(StackItemType::Boolean),
         callflags: CallFlags::None as u8,
     };
@@ -292,7 +308,7 @@ impl Syscall {
 
     pub const STORAGE_AS_READ_ONLY: Syscall = Syscall {
         name: "System.Storage.AsReadOnly",
-        args: &[],
+        args: &[("context", StackItemType::Array)],
         return_type: Some(StackItemType::Array), // a StorageContext struct. The underlying type of struct in `neo-vm` is Array.
         callflags: CallFlags::ReadStates as u8,
     };
@@ -425,6 +441,8 @@ const SYSCALLS: &[Syscall] = &[
     Syscall::CONTRACT_CREATE_MULTISIG_ACCOUNT,
     Syscall::CRYPTO_CHECK_SIG,
     Syscall::CRYPTO_CHECK_MULTISIG,
+    Syscall::ITERATOR_NEXT,
+    Syscall::ITERATOR_VALUE,
     Syscall::RUNTIME_PLATFORM,
     Syscall::RUNTIME_GET_NETWORK,
     Syscall::RUNTIME_GET_ADDRESS_VERSION,

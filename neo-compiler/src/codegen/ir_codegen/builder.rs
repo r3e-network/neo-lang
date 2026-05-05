@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::codegen::expr::{get_operand_for_type, parse_int_literal};
+use crate::codegen::expr::{get_operand_for_type, parse_int_literal, ParsedIntLiteral};
 use crate::codegen::CodegenError;
 use crate::ir::*;
 use crate::syntax::ast::{AssignOp, BinaryOp, Literal, Type, UnaryOp};
@@ -853,10 +853,15 @@ impl Builder {
             Literal::Int(s) => {
                 let n = parse_int_literal(s)
                     .ok_or_else(|| CodegenError::BadIntegerLiteral(s.clone()))?;
-                if n < i64::MIN as i128 || n > i64::MAX as i128 {
-                    self.push_int128(n);
-                } else {
-                    self.push_int(n as i64);
+                match n {
+                    ParsedIntLiteral::I128(n) => {
+                        if n < i64::MIN as i128 || n > i64::MAX as i128 {
+                            self.push_int128(n);
+                        } else {
+                            self.push_int(n as i64);
+                        }
+                    }
+                    ParsedIntLiteral::I256(bytes) => self.push_int256(&bytes),
                 }
             }
             Literal::String(s) => self.push_data(s.as_bytes()),

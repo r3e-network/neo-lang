@@ -65,6 +65,7 @@ fn call_patch_touches_range(patches: &[(usize, String)], start: usize, len: usiz
 }
 
 /// After removing `count` instructions starting at `removed_at`, shift patch indices down.
+#[allow(clippy::ptr_arg)]
 fn shift_call_patches_after_remove(
     patches: &mut Vec<(usize, String)>,
     removed_at: usize,
@@ -125,6 +126,7 @@ fn load_slot(op: OpCode, operands: &[u8]) -> Option<u8> {
 
 /// `LDLOC n; LDLOC n` (or `LDARG n; LDARG n`) has the same stack effect as `…; DUP`.
 /// Replace the second load with `DUP` (same instruction count; cheaper and shorter bytecode for `LDLOC`+operand).
+#[allow(clippy::ptr_arg)]
 fn merge_adjacent_duplicate_loads(
     inst: &mut Vec<Instruction>,
     patches: &mut Vec<(usize, String)>,
