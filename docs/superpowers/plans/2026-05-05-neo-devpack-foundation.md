@@ -1,0 +1,74 @@
+# Neo DevPack Foundation Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Add a tested `neo-devpack` workspace crate that provides Neo N3 API metadata, manifest helpers, standard validators, templates, and testing utilities for `neo-lang`.
+
+**Architecture:** The new crate is independent from `neo-compiler` and exposes small modules with stable data structures. Compiler integration is deliberately deferred until package/import resolution is implemented.
+
+**Tech Stack:** Rust 2021, Cargo workspace, serde/serde_json, unit and integration tests.
+
+---
+
+### Task 1: Workspace Crate and Red Tests
+
+**Files:**
+- Modify: `Cargo.toml`
+- Create: `neo-devpack/Cargo.toml`
+- Create: `neo-devpack/src/lib.rs`
+- Create: `neo-devpack/tests/devpack_foundation.rs`
+
+- [ ] Write tests importing `neo_devpack::{api, standards, templates, testing}` and asserting the desired public API.
+- [ ] Run `cargo test -p neo-devpack`; expected failure: unresolved items.
+- [ ] Implement modules until tests pass.
+- [ ] Run `cargo test -p neo-devpack`; expected pass.
+
+### Task 2: API Catalog
+
+**Files:**
+- Create: `neo-devpack/src/types.rs`
+- Create: `neo-devpack/src/api.rs`
+
+- [ ] Add `NeoType`, `ParameterSpec`, `FunctionSpec`, `ModuleSpec`, `NativeContractSpec`, `CallFlags`, and `ApiCatalog`.
+- [ ] Include `runtime`, `storage`, `contract`, `crypto`, and `iterator` modules.
+- [ ] Include native contracts: ContractManagement, StdLib, CryptoLib, Ledger, NEO, GAS, Policy, RoleManagement, Oracle.
+- [ ] Test lookup, native hashes, and important method signatures.
+
+### Task 3: Manifest and Standards
+
+**Files:**
+- Create: `neo-devpack/src/manifest.rs`
+- Create: `neo-devpack/src/standards.rs`
+
+- [ ] Add serializable manifest structs aligned with Neo N3 field names.
+- [ ] Add `ContractShape` and `CompatibilityError`.
+- [ ] Implement NEP-17 and NEP-11 validators.
+- [ ] Add standard index entries for NEP-17, NEP-11, NEP-24, NEP-26, NEP-27, NEP-29, NEP-30, and NEP-31.
+
+### Task 4: Templates
+
+**Files:**
+- Create: `neo-devpack/src/templates.rs`
+
+- [ ] Add `TemplateKind`, `TemplateOptions`, `RenderedTemplate`, and `TemplateFile`.
+- [ ] Add hello world, NEP-17 token, NEP-11 NFT, storage map, oracle consumer, and upgradeable admin templates.
+- [ ] Test that rendered files have no unresolved placeholders and include expected ABI members.
+
+### Task 5: Testing Utilities
+
+**Files:**
+- Create: `neo-devpack/src/testing.rs`
+
+- [ ] Add `StorageFixture`, `NotificationRecorder`, `Notification`, `GasMeter`, and `DevPackTestContext`.
+- [ ] Test storage get/put/delete/prefix, notifications, and gas budget errors.
+
+### Task 6: Documentation and Verification
+
+**Files:**
+- Create: `neo-devpack/README.md`
+- Modify: `README.md`
+
+- [ ] Document crate purpose, modules, and first-phase limitations.
+- [ ] Run `cargo fmt --all -- --check`.
+- [ ] Run `cargo test --workspace --all-targets`.
+- [ ] Run `cargo clippy --workspace --all-targets --all-features -- -D warnings`.

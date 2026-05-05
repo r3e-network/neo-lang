@@ -94,8 +94,8 @@ impl FunctionIr {
                 if let Instr::Binary { left, right, .. } = instr {
                     if left == right {
                         if let ValueRef::Value(id) = left {
-                            if uses.get(&id).copied() == Some(2) && !cross_block_use.contains(&id) {
-                                spill.remove(&id);
+                            if uses.get(id).copied() == Some(2) && !cross_block_use.contains(id) {
+                                spill.remove(id);
                             }
                         }
                     }

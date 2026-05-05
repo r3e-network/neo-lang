@@ -229,6 +229,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "neo-devpack"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "num_enum"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

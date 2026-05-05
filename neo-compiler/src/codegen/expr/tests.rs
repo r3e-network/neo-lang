@@ -2,9 +2,9 @@ use super::*;
 use crate::target::syscall::Syscall;
 use crate::target::Instruction;
 
-fn compile_expr_stub<'a>(
+fn compile_expr_stub(
     params: &[Param],
-    structs: &'a [StructDecl],
+    structs: &[StructDecl],
     value_struct: &mut HashMap<String, String>,
     expr: &Expr,
 ) -> Result<Vec<Instruction>, CodegenError> {

@@ -69,6 +69,7 @@ impl FunctionIr {
         Some(join)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn emit_branch_terminator(
         &self,
         builder: &mut Builder,

@@ -94,7 +94,7 @@ pub(crate) fn format_operands(offset: usize, inst: &Instruction) -> String {
                 format!("token={:#010x}", t)
             }
         }
-        OpCode::PUSHDATA1 if o.len() >= 1 => {
+        OpCode::PUSHDATA1 if !o.is_empty() => {
             let n = o[0] as usize;
             let payload = o.get(1..).unwrap_or(&[]);
             if payload.len() == n {

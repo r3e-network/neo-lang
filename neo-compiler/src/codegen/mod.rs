@@ -217,6 +217,12 @@ pub enum CodegenError {
 
 pub struct Codegen {}
 
+impl Default for Codegen {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Codegen {
     pub fn new() -> Self {
         Self {}

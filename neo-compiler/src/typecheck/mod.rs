@@ -586,16 +586,14 @@ impl<'a> TypeCheckContext<'a> {
     }
 
     fn infer_expr_member_self(&self, env: &FnEnv, field: &str) -> Result<Type, TypeError> {
-        if env.is_contract_fn {
-            if !self.contract_fields.is_empty() {
-                if let Some(cf) = self.contract_fields.iter().find(|f| f.name == field) {
-                    if cf.ty.is_map() {
-                        return Err(err(format!(
+        if env.is_contract_fn && !self.contract_fields.is_empty() {
+            if let Some(cf) = self.contract_fields.iter().find(|f| f.name == field) {
+                if cf.ty.is_map() {
+                    return Err(err(format!(
                             "use `self.{field}[key]` for contract map fields (whole-field load is not supported)"
                         )));
-                    }
-                    return Ok(cf.ty.clone());
                 }
+                return Ok(cf.ty.clone());
             }
         }
         let struct_name = env.value_struct.get("self").ok_or_else(|| {
@@ -1006,7 +1004,7 @@ impl<'a> TypeCheckContext<'a> {
                     return Err(err(format!("contract doesn't have field `{field}`")));
                 };
                 if let Type::Map { key, .. } = &cf.ty {
-                    return self.check_contract_storage_map_method(&key, method, args, env);
+                    return self.check_contract_storage_map_method(key, method, args, env);
                 }
             }
         };
@@ -1177,7 +1175,7 @@ impl<'a> TypeCheckContext<'a> {
                         "`assert` second argument must be string, got `{t1:?}`"
                     )));
                 }
-                return Ok(Some(Type::Void));
+                Ok(Some(Type::Void))
             }
             "abort" => {
                 if args.len() != 1 {
@@ -1187,7 +1185,7 @@ impl<'a> TypeCheckContext<'a> {
                 if t0 != Type::String {
                     return Err(err(format!("`abort` expects string, got `{t0:?}`")));
                 }
-                return Ok(Some(Type::Void));
+                Ok(Some(Type::Void))
             }
             "min" | "max" => {
                 if args.len() != 2 {
@@ -1200,7 +1198,7 @@ impl<'a> TypeCheckContext<'a> {
                         "`{name}` expects two int arguments, got `{t0:?}` and `{t1:?}`"
                     )));
                 }
-                return Ok(Some(Type::Int));
+                Ok(Some(Type::Int))
             }
             _ => Ok(None),
         }

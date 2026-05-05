@@ -307,9 +307,8 @@ impl Instr {
                 | Instr::StructCall { .. }
                 | Instr::RuntimeLog { .. }
                 | Instr::RuntimeNotify { .. }
-                | Instr::ContractCallReadOnly { .. }
-                // | Instr::ArrayPack { .. }
-                // | Instr::MapPack { .. }
+                | Instr::ContractCallReadOnly { .. } // | Instr::ArrayPack { .. }
+                                                     // | Instr::MapPack { .. }
         )
     }
 }

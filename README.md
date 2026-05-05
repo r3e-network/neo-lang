@@ -32,6 +32,19 @@ contract Example {
 
 ```
 
+## DevPack
+
+This workspace includes `neo-devpack`, a Neo N3 development pack foundation for `neo-lang`.
+
+The devpack provides:
+- Typed Neo N3 API metadata for runtime, storage, contract, crypto, iterator, and native contracts.
+- Manifest helpers for Neo N3 ABI artifacts.
+- NEP standard discovery and compatibility checks.
+- Built-in contract templates for common Neo contract patterns.
+- Fast testing primitives for storage, notifications, and gas accounting.
+
+See `neo-devpack/README.md` and `docs/superpowers/plans/2026-05-05-neo-n3-compiler-devpack-coverage.md` for the current coverage plan and follow-up layers.
+
 ## Built-in Types
 `neo-lang` is strongly typed language, and the built-in types are:
 - `null`: The null value. Literal: `null`.

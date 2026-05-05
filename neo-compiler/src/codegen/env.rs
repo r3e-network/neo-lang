@@ -103,7 +103,7 @@ impl Builder {
             1 => self.emit(OpCode::LDARG1),
             2 => self.emit(OpCode::LDARG2),
             3 => self.emit(OpCode::LDARG3),
-            4 => self.emit(OpCode::LDARG4),  
+            4 => self.emit(OpCode::LDARG4),
             5 => self.emit(OpCode::LDARG5),
             6 => self.emit(OpCode::LDARG6),
             _ => self.emit_with_operands(OpCode::LDARG, std::slice::from_ref(&index)),
