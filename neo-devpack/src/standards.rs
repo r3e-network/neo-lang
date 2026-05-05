@@ -172,6 +172,8 @@ pub fn validate_standard(
     let (required_methods, required_events) = match standard {
         NepStandard::Nep17 => (nep17_methods(), nep17_events()),
         NepStandard::Nep11 => (nep11_methods(), nep11_events()),
+        NepStandard::Nep27 => (nep27_methods(), Vec::new()),
+        NepStandard::Nep26 => (nep26_methods(), Vec::new()),
         _ => (Vec::new(), Vec::new()),
     };
 
@@ -321,6 +323,31 @@ fn nep11_events() -> Vec<FunctionSpec> {
             p("to", NeoType::Hash160),
             p("amount", NeoType::Integer),
             p("tokenId", NeoType::ByteArray),
+        ],
+        NeoType::Void,
+    )]
+}
+
+fn nep27_methods() -> Vec<FunctionSpec> {
+    vec![f(
+        "onNEP17Payment",
+        vec![
+            p("from", NeoType::Hash160),
+            p("amount", NeoType::Integer),
+            p("data", NeoType::Any),
+        ],
+        NeoType::Void,
+    )]
+}
+
+fn nep26_methods() -> Vec<FunctionSpec> {
+    vec![f(
+        "onNEP11Payment",
+        vec![
+            p("from", NeoType::Hash160),
+            p("amount", NeoType::Integer),
+            p("tokenId", NeoType::ByteArray),
+            p("data", NeoType::Any),
         ],
         NeoType::Void,
     )]

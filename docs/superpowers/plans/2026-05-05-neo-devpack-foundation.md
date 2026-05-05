@@ -267,3 +267,16 @@
 - [x] Validate fixed hash/signature byte lengths and public key compressed/uncompressed length plus prefix.
 - [x] Decode variable-length byte arrays and buffers from `0x`-prefixed or raw hex input.
 - [x] Surface actionable error text for malformed hex and public keys.
+
+### Task 20: NEP-26/NEP-27 Payment Callback Validators
+
+**Files:**
+- Modify: `neo-devpack/src/standards.rs`
+- Modify: `neo-devpack/tests/devpack_foundation.rs`
+- Modify: `neo-devpack/README.md`
+- Modify: `docs/superpowers/plans/2026-05-05-neo-n3-compiler-devpack-coverage.md`
+
+- [x] Add red tests for NEP-27 `onNEP17Payment(Hash160,Integer,Any): Void` receiver validation and analyzer findings.
+- [x] Add NEP-26 `onNEP11Payment(Hash160,Integer,ByteArray,Any): Void` receiver validation.
+- [x] Surface missing and malformed payment callback methods through existing compatibility diagnostics.
+- [x] Document receiver callback validation in the devpack README and roadmap.

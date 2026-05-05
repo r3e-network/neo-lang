@@ -311,6 +311,57 @@ fn standards_validate_nep11_shape_and_publish_standard_index() {
 }
 
 #[test]
+fn standards_validate_payment_callback_receiver_shapes() {
+    let nep17_receiver = ContractShape::new("Vault")
+        .supported_standard(NepStandard::Nep27)
+        .method(FunctionSpec::new(
+            "onNEP17Payment",
+            vec![
+                ParameterSpec::new("from", NeoType::Hash160),
+                ParameterSpec::new("amount", NeoType::Integer),
+                ParameterSpec::new("data", NeoType::Any),
+            ],
+            NeoType::Void,
+        ));
+    validate_standard(NepStandard::Nep27, &nep17_receiver).expect("valid NEP-27 receiver");
+
+    let missing_nep17_callback = ContractShape::new("Vault").supported_standard(NepStandard::Nep27);
+    let errors = validate_standard(NepStandard::Nep27, &missing_nep17_callback).unwrap_err();
+    assert!(errors.iter().any(|error| error
+        .to_string()
+        .contains("missing method `onNEP17Payment`")));
+
+    let wrong_nep17_callback = ContractShape::new("Vault")
+        .supported_standard(NepStandard::Nep27)
+        .method(FunctionSpec::new(
+            "onNEP17Payment",
+            vec![
+                ParameterSpec::new("from", NeoType::Hash160),
+                ParameterSpec::new("amount", NeoType::Integer),
+            ],
+            NeoType::Void,
+        ));
+    let errors = validate_standard(NepStandard::Nep27, &wrong_nep17_callback).unwrap_err();
+    assert!(errors
+        .iter()
+        .any(|error| error.to_string().contains("signature")));
+
+    let nep11_receiver = ContractShape::new("Gallery")
+        .supported_standard(NepStandard::Nep26)
+        .method(FunctionSpec::new(
+            "onNEP11Payment",
+            vec![
+                ParameterSpec::new("from", NeoType::Hash160),
+                ParameterSpec::new("amount", NeoType::Integer),
+                ParameterSpec::new("tokenId", NeoType::ByteArray),
+                ParameterSpec::new("data", NeoType::Any),
+            ],
+            NeoType::Void,
+        ));
+    validate_standard(NepStandard::Nep26, &nep11_receiver).expect("valid NEP-26 receiver");
+}
+
+#[test]
 fn analyzer_turns_standard_errors_into_actionable_findings() {
     let shape = ContractShape::new("BrokenToken").supported_standard(NepStandard::Nep17);
     let findings = Analyzer::new()
@@ -324,6 +375,15 @@ fn analyzer_turns_standard_errors_into_actionable_findings() {
         .iter()
         .any(|finding| finding.code == "NEP17_MISSING_METHOD"
             && finding.message.contains("missing method `transfer`")));
+
+    let receiver = ContractShape::new("Vault").supported_standard(NepStandard::Nep27);
+    let findings = Analyzer::new()
+        .require_standard(NepStandard::Nep27)
+        .analyze(&receiver);
+    assert!(findings
+        .iter()
+        .any(|finding| finding.code == "NEP27_MISSING_METHOD"
+            && finding.message.contains("onNEP17Payment")));
 }
 
 #[test]

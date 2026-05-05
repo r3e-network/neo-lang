@@ -37,6 +37,7 @@ Recently fixed in active PR work:
 - NEP-17 starter template sender witness checks and `onNEP17Payment` callback scaffolding through typed `Contract.Call` flags.
 - Devpack native-value helper for validating Neo N3 Base58Check addresses and converting them into `Hash160` values for native calls.
 - Devpack native-value constructors for validated hash256, public key, signature, byte array, and buffer values.
+- NEP-26/NEP-27 receiver callback ABI validation for contracts that declare token payment callback support.
 - README attribute mismatch for implemented attributes.
 
 ## Primary Gaps
@@ -54,7 +55,7 @@ Recently fixed in active PR work:
    Official Neo N3 native contracts include ContractManagement, CryptoLib, GAS, Ledger, NEO, Oracle, Policy, RoleManagement, and StdLib. The language currently only exposes generic `runtime.contractCall` and some direct runtime/storage behavior.
 
 5. Standards support is incomplete.
-   NEP-17 and NEP-11 now have devpack metadata, compiler ABI validation, starter templates, and native-value address validation, but still need deeper runtime semantics such as payable-contract detection, private-network execution fixtures, and negative callback behavior tests. NEP-24, NEP-26, NEP-27, NEP-29, NEP-30, and NEP-31 still need deeper typed helpers beyond metadata.
+   NEP-17, NEP-11, NEP-26, and NEP-27 now have devpack metadata plus ABI validation for token and payment callback shapes, but still need deeper runtime semantics such as private-network execution fixtures and negative callback behavior tests. NEP-24, NEP-29, NEP-30, and NEP-31 still need deeper typed helpers beyond metadata.
 
 6. Imports/packages are parsed but not a resolved module system.
    `import name from "library";` appears in AST and docs, but there is no package resolver, multi-file compilation, dependency graph, export model, namespace hygiene, or artifact packaging.
@@ -171,7 +172,7 @@ Acceptance:
 
 ## Immediate Next PRs
 
-1. Complete NEP-17 payable-receiver detection and negative callback behavior coverage.
+1. Add runtime-oriented negative callback behavior coverage for NEP-17/NEP-11 receiver contracts.
 2. Typed Runtime/Contract/Storage devpack module design and first implementation.
 3. Native contract wrapper generation strategy and StdLib/CryptoLib pilot.
 4. Golden NEF/manifest snapshots and debug artifact planning.
