@@ -617,6 +617,68 @@ mod tests {
         );
     }
 
+    #[test]
+    fn golden_artifacts_are_deterministic_for_minimal_contract() {
+        let src = r#"
+            #[author("golden")]
+            contract Golden {
+                #[safe]
+                int answer() {
+                    return 42;
+                }
+            }
+        "#;
+        let ast = parse_source_file(src).expect("parse");
+        let compiled = Codegen::new().codegen_source_file(&ast).expect("codegen");
+        let script = compiled.flatten_to_bytes();
+        let nef = Nef3::new(script.clone(), "neo-compiler golden-test").to_bytes();
+        let manifest = build_manifest(&ast, &compiled).expect("manifest");
+        let manifest_json = serde_json::to_string_pretty(&manifest).expect("manifest json");
+
+        assert_eq!(hex_lower(&script), "570000002a40");
+        assert_eq!(
+            hex_lower(&nef),
+            "4e4546336e656f2d636f6d70696c657220676f6c64656e2d7465737400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006570000002a4008540fd5"
+        );
+        assert_eq!(
+            manifest_json,
+            r#"{
+  "name": "Golden",
+  "groups": [],
+  "supportedstandards": [],
+  "abi": {
+    "methods": [
+      {
+        "name": "answer",
+        "parameters": [],
+        "returntype": "Integer",
+        "offset": 0,
+        "safe": true
+      }
+    ],
+    "events": []
+  },
+  "permissions": [
+    {
+      "contract": "*",
+      "methods": "*"
+    }
+  ],
+  "trusts": "*",
+  "extra": {
+    "author": "golden"
+  }
+}"#
+        );
+    }
+
+    fn hex_lower(bytes: &[u8]) -> String {
+        bytes
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    }
+
     fn compile_marked_neo_blocks(markdown: &str) -> Vec<String> {
         let mut blocks = Vec::new();
         let mut current: Option<String> = None;
