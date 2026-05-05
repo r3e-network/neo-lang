@@ -21,6 +21,7 @@ It is modeled after the responsibilities of `neo-project/neo-devpack-dotnet`, ad
 - Typed native-contract invocation builders with arity/type validation.
 - `StdLib` and `CryptoLib` helper wrappers build typed native invocations for serialization, base encodings, hashing, and ECDSA verification.
 - `GasToken` and `NeoToken` helper wrappers build typed native invocations for balances, transfers, supply, and NEO governance calls.
+- `ContractManagement`, `Ledger`, `Policy`, `RoleManagement`, and `Oracle` helper wrappers cover the remaining Neo N3 native contracts with typed arity and argument validation.
 - `NativeValue::address` validates Neo N3 Base58Check addresses, version `0x35`, and checksums before converting to `Hash160`.
 - `NativeValue` constructors validate hash160, hash256, public key, signature, byte array, and buffer inputs before they reach native-call builders.
 - Standards index: NEP-11, NEP-17, NEP-24, NEP-26, NEP-27, NEP-29, NEP-30, NEP-31.
@@ -83,7 +84,9 @@ Unknown `neo-devpack/<module>` imports are rejected during type checking. Runtim
 
 ```rust
 use neo_devpack::api::ApiCatalog;
-use neo_devpack::native::{CryptoLib, GasToken, NativeContract, NativeValue, StdLib};
+use neo_devpack::native::{
+    CryptoLib, GasToken, NativeContract, NativeValue, Oracle, Policy, StdLib,
+};
 use neo_devpack::standards::{validate_standard, ContractShape, NepStandard};
 
 let catalog = ApiCatalog::neo_n3();
@@ -118,6 +121,18 @@ assert_eq!(digest.method.name, "sha256");
 
 let encoded = StdLib::base64_encode(NativeValue::byte_array("0x68656c6c6f")?)?;
 assert_eq!(encoded.method.name, "base64Encode");
+
+let blocked = Policy::is_blocked(NativeValue::address("NTRAJ9EEjHFHhHZvMKEKfkceg5V9ppx5ZP")?)?;
+assert_eq!(blocked.method.name, "isBlocked");
+
+let oracle_request = Oracle::request(
+    "https://example.com/price",
+    "$.price",
+    "onOracleResponse",
+    NativeValue::String("request-1".into()),
+    10_000_000,
+)?;
+assert_eq!(oracle_request.method.name, "request");
 ```
 
 ## Current Limits

@@ -1,7 +1,10 @@
 use neo_devpack::analyzer::{Analyzer, FindingSeverity};
 use neo_devpack::api::{ApiCatalog, CallFlags};
 use neo_devpack::manifest::{ContractManifest, ManifestBuilder};
-use neo_devpack::native::{CryptoLib, GasToken, NativeContract, NativeValue, NeoToken, StdLib};
+use neo_devpack::native::{
+    ContractManagement, CryptoLib, GasToken, Ledger, NativeContract, NativeValue, NeoToken, Oracle,
+    Policy, RoleManagement, StdLib,
+};
 use neo_devpack::standards::{standard_index, validate_standard, ContractShape, NepStandard};
 use neo_devpack::templates::{render_template, TemplateKind, TemplateOptions};
 use neo_devpack::testing::{DevPackTestContext, GasError};
@@ -198,6 +201,82 @@ fn native_neo_and_gas_helpers_build_typed_invocations() {
     let bad_transfer = GasToken::transfer(NativeValue::integer(1), bob, 1, NativeValue::null())
         .expect_err("transfer wrapper should keep hash160 type validation");
     assert!(bad_transfer.to_string().contains("expected `Hash160`"));
+}
+
+#[test]
+fn remaining_native_contract_helpers_build_typed_invocations() {
+    let account = NativeValue::hash160("0x1111111111111111111111111111111111111111").unwrap();
+    let hash256 =
+        NativeValue::hash256("0x2222222222222222222222222222222222222222222222222222222222222222")
+            .unwrap();
+    let nef = NativeValue::byte_array("0x4e454633").unwrap();
+
+    let fee =
+        ContractManagement::get_minimum_deployment_fee().expect("ContractManagement fee wrapper");
+    assert_eq!(fee.contract.name, "ContractManagement");
+    assert_eq!(fee.method.name, "getMinimumDeploymentFee");
+    assert!(fee.method.safe);
+    assert_eq!(fee.method.return_type, NeoType::Integer);
+
+    let deploy = ContractManagement::deploy(nef.clone(), "{\"name\":\"demo\"}")
+        .expect("ContractManagement deploy wrapper");
+    assert_eq!(deploy.method.name, "deploy");
+    assert_eq!(
+        deploy.argument_types(),
+        vec![NeoType::ByteArray, NeoType::String]
+    );
+
+    let block = Ledger::get_block(NativeValue::integer(123)).expect("Ledger getBlock wrapper");
+    assert_eq!(block.contract.name, "Ledger");
+    assert_eq!(block.method.name, "getBlock");
+    assert!(block.method.safe);
+    assert_eq!(block.argument_types(), vec![NeoType::Integer]);
+
+    let tx = Ledger::get_transaction(hash256.clone()).expect("Ledger getTransaction wrapper");
+    assert_eq!(tx.method.name, "getTransaction");
+    assert_eq!(tx.argument_types(), vec![NeoType::Hash256]);
+
+    let blocked = Policy::is_blocked(account.clone()).expect("Policy isBlocked wrapper");
+    assert_eq!(blocked.contract.name, "Policy");
+    assert_eq!(blocked.method.name, "isBlocked");
+    assert_eq!(blocked.argument_types(), vec![NeoType::Hash160]);
+
+    let designated = RoleManagement::get_designated_by_role(4, 100)
+        .expect("RoleManagement getDesignatedByRole wrapper");
+    assert_eq!(designated.method.name, "getDesignatedByRole");
+    assert_eq!(
+        designated.argument_types(),
+        vec![NeoType::Integer, NeoType::Integer]
+    );
+
+    let request = Oracle::request(
+        "https://example.com/price",
+        "$.price",
+        "onOracleResponse",
+        NativeValue::String("request-1".into()),
+        10_000_000,
+    )
+    .expect("Oracle request wrapper");
+    assert_eq!(request.contract.name, "Oracle");
+    assert_eq!(request.method.name, "request");
+    assert_eq!(
+        request.argument_types(),
+        vec![
+            NeoType::String,
+            NeoType::String,
+            NeoType::String,
+            NeoType::String,
+            NeoType::Integer,
+        ]
+    );
+
+    let bad_policy =
+        Policy::is_blocked(NativeValue::integer(1)).expect_err("Policy wrapper validates hash160");
+    assert!(bad_policy.to_string().contains("expected `Hash160`"));
+
+    let bad_ledger =
+        Ledger::get_transaction(account).expect_err("Ledger wrapper validates hash256");
+    assert!(bad_ledger.to_string().contains("expected `Hash256`"));
 }
 
 #[test]

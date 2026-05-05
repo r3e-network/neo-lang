@@ -40,6 +40,7 @@ Recently fixed in active PR work:
 - NEP-26/NEP-27 receiver callback ABI validation for contracts that declare token payment callback support.
 - StdLib/CryptoLib native wrapper pilot for typed serialization, base encoding, hashing, and ECDSA invocation helpers.
 - NEO/GAS native token wrappers for typed balance, transfer, supply, and governance invocation helpers.
+- ContractManagement, Ledger, Policy, RoleManagement, and Oracle native wrappers for typed invocation helpers across the remaining Neo N3 native contracts.
 - README attribute mismatch for implemented attributes.
 
 ## Primary Gaps

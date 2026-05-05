@@ -250,6 +250,171 @@ impl NeoToken {
     }
 }
 
+pub struct ContractManagement;
+
+impl ContractManagement {
+    pub fn get_minimum_deployment_fee() -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::ContractManagement
+            .call("getMinimumDeploymentFee")
+            .build()
+    }
+
+    pub fn get_contract(hash: NativeValue) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::ContractManagement
+            .call("getContract")
+            .arg(hash)
+            .build()
+    }
+
+    pub fn get_contract_by_id(id: impl Into<i128>) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::ContractManagement
+            .call("getContractById")
+            .arg(NativeValue::integer(id))
+            .build()
+    }
+
+    pub fn get_contract_hashes() -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::ContractManagement
+            .call("getContractHashes")
+            .build()
+    }
+
+    pub fn deploy(
+        nef_file: NativeValue,
+        manifest: impl Into<String>,
+    ) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::ContractManagement
+            .call("deploy")
+            .arg(nef_file)
+            .arg(NativeValue::String(manifest.into()))
+            .build()
+    }
+
+    pub fn update(
+        nef_file: NativeValue,
+        manifest: impl Into<String>,
+    ) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::ContractManagement
+            .call("update")
+            .arg(nef_file)
+            .arg(NativeValue::String(manifest.into()))
+            .build()
+    }
+
+    pub fn destroy() -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::ContractManagement.call("destroy").build()
+    }
+}
+
+pub struct Ledger;
+
+impl Ledger {
+    pub fn current_hash() -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Ledger.call("currentHash").build()
+    }
+
+    pub fn current_index() -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Ledger.call("currentIndex").build()
+    }
+
+    pub fn get_block(hash_or_index: NativeValue) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Ledger
+            .call("getBlock")
+            .arg(hash_or_index)
+            .build()
+    }
+
+    pub fn get_transaction(hash: NativeValue) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Ledger
+            .call("getTransaction")
+            .arg(hash)
+            .build()
+    }
+
+    pub fn get_transaction_from_block(
+        hash_or_index: NativeValue,
+        tx_index: impl Into<i128>,
+    ) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Ledger
+            .call("getTransactionFromBlock")
+            .arg(hash_or_index)
+            .arg(NativeValue::integer(tx_index))
+            .build()
+    }
+
+    pub fn get_transaction_height(
+        hash: NativeValue,
+    ) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Ledger
+            .call("getTransactionHeight")
+            .arg(hash)
+            .build()
+    }
+}
+
+pub struct Policy;
+
+impl Policy {
+    pub fn get_fee_per_byte() -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Policy.call("getFeePerByte").build()
+    }
+
+    pub fn get_exec_fee_factor() -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Policy.call("getExecFeeFactor").build()
+    }
+
+    pub fn get_storage_price() -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Policy.call("getStoragePrice").build()
+    }
+
+    pub fn is_blocked(account: NativeValue) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Policy
+            .call("isBlocked")
+            .arg(account)
+            .build()
+    }
+}
+
+pub struct RoleManagement;
+
+impl RoleManagement {
+    pub fn get_designated_by_role(
+        role: impl Into<i128>,
+        index: impl Into<i128>,
+    ) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::RoleManagement
+            .call("getDesignatedByRole")
+            .arg(NativeValue::integer(role))
+            .arg(NativeValue::integer(index))
+            .build()
+    }
+}
+
+pub struct Oracle;
+
+impl Oracle {
+    pub fn get_price() -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Oracle.call("getPrice").build()
+    }
+
+    pub fn request(
+        url: impl Into<String>,
+        filter: impl Into<String>,
+        callback: impl Into<String>,
+        user_data: NativeValue,
+        gas_for_response: impl Into<i128>,
+    ) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Oracle
+            .call("request")
+            .arg(NativeValue::String(url.into()))
+            .arg(NativeValue::String(filter.into()))
+            .arg(NativeValue::String(callback.into()))
+            .arg(user_data)
+            .arg(NativeValue::integer(gas_for_response))
+            .build()
+    }
+}
+
 fn token_symbol(contract: NativeContract) -> Result<NativeInvocation, NativeBindingError> {
     contract.call("symbol").build()
 }
