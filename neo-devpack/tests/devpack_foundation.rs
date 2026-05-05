@@ -291,6 +291,9 @@ fn templates_render_professional_starting_points_without_unresolved_markers() {
     let source = &nep17.files[0].contents;
     assert!(source.contains("bool transfer(hash160 source, hash160 dest, int amount, any data)"));
     assert!(source.contains("event Transfer(hash160 source, hash160 dest, int amount);"));
+    assert!(source.contains("runtime.checkWitness(source)"));
+    assert!(source.contains("contractApi.call(dest"));
+    assert!(source.contains("\"onNEP17Payment\""));
 
     let nep11 = render_template(TemplateKind::Nep11Nft, &TemplateOptions::new("Collectible"))
         .expect("NEP-11 template");

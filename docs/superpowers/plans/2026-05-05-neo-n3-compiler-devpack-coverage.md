@@ -34,6 +34,7 @@ Recently fixed in active PR work:
 - Compiler-side NEP-17/NEP-11 compatibility validation for `supportedStandards`.
 - Compiler compile checks for all built-in devpack templates.
 - GitHub Actions CI and docs examples marked with `neo,compile`.
+- NEP-17 starter template sender witness checks and `onNEP17Payment` callback scaffolding through typed `Contract.Call` flags.
 - README attribute mismatch for implemented attributes.
 
 ## Primary Gaps
@@ -51,7 +52,7 @@ Recently fixed in active PR work:
    Official Neo N3 native contracts include ContractManagement, CryptoLib, GAS, Ledger, NEO, Oracle, Policy, RoleManagement, and StdLib. The language currently only exposes generic `runtime.contractCall` and some direct runtime/storage behavior.
 
 5. Standards support is incomplete.
-   NEP-17 support is only an example and does not yet enforce or scaffold required ABI, supported standard metadata, Transfer event shape, callback behavior, address validation, witness checks, or receiver callbacks. NEP-11, NEP-24, NEP-26, NEP-27, NEP-29, NEP-30, and NEP-31 are not represented.
+   NEP-17 and NEP-11 now have devpack metadata, compiler ABI validation, and starter templates, but still need deeper runtime semantics such as address validation helpers, payable-contract detection, private-network execution fixtures, and negative callback behavior tests. NEP-24, NEP-26, NEP-27, NEP-29, NEP-30, and NEP-31 still need deeper typed helpers beyond metadata.
 
 6. Imports/packages are parsed but not a resolved module system.
    `import name from "library";` appears in AST and docs, but there is no package resolver, multi-file compilation, dependency graph, export model, namespace hygiene, or artifact packaging.
@@ -114,7 +115,7 @@ Acceptance:
 ### Phase 2: Neo N3 API Surface
 
 - Design typed devpack modules for Runtime, Storage, Contract, Crypto, Iterator, and native contracts.
-- Replace generic `runtime.contractCall` with typed `Contract.call` and explicit call flags while keeping a low-level escape hatch.
+- Replace generic `runtime.contractCall` with typed `Contract.call` and explicit call flags while keeping a low-level escape hatch. The NEP-17 template now uses this path for receiver callbacks.
 - Add native wrappers for ContractManagement, StdLib, CryptoLib, Ledger, NEO, GAS, Policy, RoleManagement, Oracle.
 - Add storage context, read-only context, storage map, find options, iterator next/key/value APIs.
 

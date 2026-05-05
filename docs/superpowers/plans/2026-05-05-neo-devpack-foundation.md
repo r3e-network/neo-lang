@@ -226,3 +226,17 @@
 - [x] Parse, type-check, codegen, and manifest-check every marked docs example in the compiler test suite.
 - [x] Add GitHub Actions CI for format, workspace tests, clippy, and whitespace checks.
 - [x] Record CI/docs-example coverage in the roadmap.
+
+### Task 17: NEP-17 Template Witness and Receiver Callback
+
+**Files:**
+- Modify: `neo-devpack/src/templates.rs`
+- Modify: `neo-devpack/tests/devpack_foundation.rs`
+- Modify: `neo-devpack/README.md`
+- Modify: `docs/superpowers/plans/2026-05-05-neo-n3-compiler-devpack-coverage.md`
+
+- [x] Add a red devpack template test for sender witness validation and `onNEP17Payment` callback scaffolding.
+- [x] Harden the NEP-17 starter `transfer` method with `runtime.checkWitness(source)`.
+- [x] Emit receiver callbacks through the `neo-devpack/contract` module with explicit `CallFlags.All` (`15`) instead of the legacy read-only `runtime.contractCall` escape hatch.
+- [x] Add explicit devpack imports to templates that use runtime or contract APIs.
+- [x] Re-run targeted template rendering and compiler template-manifest checks.

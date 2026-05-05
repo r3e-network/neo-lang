@@ -144,7 +144,10 @@ contract {{contract_name}} {
 }
 "#;
 
-const NEP17_TOKEN: &str = r#"#[author("{{author}}")]
+const NEP17_TOKEN: &str = r#"import runtime from "neo-devpack/runtime";
+import contractApi from "neo-devpack/contract";
+
+#[author("{{author}}")]
 #[version("0.1.0")]
 #[description("A NEP-17 token contract.")]
 #[supportedStandards("NEP-17")]
@@ -176,8 +179,12 @@ contract {{contract_name}} {
 
     bool transfer(hash160 source, hash160 dest, int amount, any data) {
         assert(amount >= 0, "amount must be non-negative");
+        if runtime.checkWitness(source) == false {
+            return false;
+        }
         if amount == 0 {
             emit Transfer(source, dest, amount);
+            contractApi.call(dest, "onNEP17Payment", 15, any[] { source, amount, data });
             return true;
         }
 
@@ -189,6 +196,7 @@ contract {{contract_name}} {
         self.balances[source] = fromBalance - amount;
         self.balances[dest] = self.balances[dest] + amount;
         emit Transfer(source, dest, amount);
+        contractApi.call(dest, "onNEP17Payment", 15, any[] { source, amount, data });
         return true;
     }
 }
@@ -277,7 +285,9 @@ contract {{contract_name}} {
 }
 "#;
 
-const ORACLE_CONSUMER: &str = r#"#[author("{{author}}")]
+const ORACLE_CONSUMER: &str = r#"import runtime from "neo-devpack/runtime";
+
+#[author("{{author}}")]
 #[version("0.1.0")]
 #[description("An oracle-consumer starting point.")]
 contract {{contract_name}} {
@@ -300,7 +310,9 @@ contract {{contract_name}} {
 }
 "#;
 
-const UPGRADEABLE_ADMIN: &str = r#"#[author("{{author}}")]
+const UPGRADEABLE_ADMIN: &str = r#"import runtime from "neo-devpack/runtime";
+
+#[author("{{author}}")]
 #[version("0.1.0")]
 #[description("An admin-gated upgradeable contract.")]
 contract {{contract_name}} {
