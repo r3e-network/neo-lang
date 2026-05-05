@@ -360,7 +360,7 @@ contract Example {
 - `#[description("...")]`: For contract, emits `extra.description`.
 - `#[source("https://...")]`: For contract, emits `extra.source`.
 - `#[version("0.0.1")]`: For contract, emits `extra.version`.
-- `#[supportedStandards("NEP-17", "NEP-11")]`: For contract, emits manifest `supportedstandards`.
+- `#[supportedStandards("NEP-17", "NEP-11")]`: For contract, emits manifest `supportedstandards`; NEP-17 and NEP-11 ABI/event shapes are validated during build.
 - `#[permission(contract, method...)]`: For contract, emits manifest permissions. Use `#[permission("*")]` to allow all contracts and methods, or pass a contract hash/group public key plus method names.
 - `#[trust(contract...)]`: For contract, emits manifest trusts. Use `#[trust("*")]` to trust all.
 - `#[group(pubkey, signature)]`: For contract, emits a manifest group entry.

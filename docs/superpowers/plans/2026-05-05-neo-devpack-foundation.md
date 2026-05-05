@@ -181,3 +181,16 @@
 - [x] Map `supportedStandards`, `permission`, `trust`, and `group` attributes to first-class manifest fields.
 - [x] Keep `auther` as a legacy alias for `author` while documenting the correct spelling.
 - [x] Document implemented contract/method attributes and remove unimplemented `pure` / `noreentrant` claims.
+
+### Task 14: Compiler Standard Compatibility Validation
+
+**Files:**
+- Modify: `neo-compiler/src/build_target.rs`
+- Modify: `README.md`
+- Modify: `neo-devpack/README.md`
+
+- [x] Add red tests proving `#[supportedStandards("NEP-17")]` accepts incomplete ABI shapes today.
+- [x] Convert contract methods/events into `neo-devpack::standards::ContractShape`.
+- [x] Validate supported NEP standards during manifest generation and surface actionable compiler errors.
+- [x] Preserve successful manifest generation for a complete minimal NEP-17 ABI.
+- [x] Document compiler-side NEP-17/NEP-11 standard validation.

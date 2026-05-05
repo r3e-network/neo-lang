@@ -31,6 +31,7 @@ Recently fixed in active PR work:
 - Contract field initializers emitted in deploy bytecode.
 - Signed 256-bit integer literals.
 - Contract manifest attributes for author, standards, permissions, trusts, and groups.
+- Compiler-side NEP-17/NEP-11 compatibility validation for `supportedStandards`.
 - README attribute mismatch for implemented attributes.
 
 ## Primary Gaps
@@ -167,7 +168,7 @@ Acceptance:
 
 1. CI and docs-example compile checks.
 2. Manifest attributes and supported standards.
-3. NEP-17 compatibility validator plus complete NEP-17 template.
+3. Complete NEP-17 template behavior and receiver callback coverage.
 4. Typed Runtime/Contract/Storage devpack module design and first implementation.
 5. Native contract wrapper generation strategy and StdLib/CryptoLib pilot.
 

@@ -22,7 +22,7 @@ It is modeled after the responsibilities of `neo-project/neo-devpack-dotnet`, ad
 - Standards index: NEP-11, NEP-17, NEP-24, NEP-26, NEP-27, NEP-29, NEP-30, NEP-31.
 - Deep validators: NEP-17 and NEP-11 ABI/event shape.
 - Templates: hello world, NEP-17 token, NEP-11 NFT, storage map, oracle consumer, upgradeable admin.
-- Compiler integration: `neo-compiler` consumes this catalog for `neo-devpack` import validation and supports runtime, storage, contract, crypto, and iterator syscall imports.
+- Compiler integration: `neo-compiler` consumes this catalog for `neo-devpack` import validation, runtime/storage/contract/crypto/iterator syscall imports, and NEP-17/NEP-11 `supportedStandards` ABI validation.
 
 ## Compiler Imports
 

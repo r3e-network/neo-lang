@@ -8,6 +8,8 @@ use crate::syntax::ast::*;
 use crate::syntax::parser;
 use crate::target::nef::*;
 use crate::MAX_SOURCE_FILE_BYTES;
+use neo_devpack::standards::{validate_standard, ContractShape, NepStandard};
+use neo_devpack::types::{FunctionSpec, NeoType, ParameterSpec};
 
 pub(crate) fn run_build(source: &std::path::Path) -> Result<(), String> {
     let meta = fs::metadata(source).map_err(|e| format!("{}: {e}", source.display()))?;
@@ -156,12 +158,103 @@ fn permission_rule_from_args(args: &[String], label: &str) -> Result<PermissionR
     Ok(PermissionRule::Allows(args.to_vec()))
 }
 
+fn nep_standard_from_manifest_name(name: &str) -> Result<NepStandard, String> {
+    match name {
+        "NEP-11" => Ok(NepStandard::Nep11),
+        "NEP-17" => Ok(NepStandard::Nep17),
+        "NEP-24" => Ok(NepStandard::Nep24),
+        "NEP-26" => Ok(NepStandard::Nep26),
+        "NEP-27" => Ok(NepStandard::Nep27),
+        "NEP-29" => Ok(NepStandard::Nep29),
+        "NEP-30" => Ok(NepStandard::Nep30),
+        "NEP-31" => Ok(NepStandard::Nep31),
+        _ => Err(format!(
+            "unsupported standard `{name}` in `supportedStandards`"
+        )),
+    }
+}
+
+fn validate_supported_standards(
+    contract: &ContractDecl,
+    standards: &[String],
+) -> Result<(), String> {
+    if standards.is_empty() {
+        return Ok(());
+    }
+
+    let mut shape = ContractShape::new(contract.name.clone());
+    let parsed_standards = standards
+        .iter()
+        .map(|name| nep_standard_from_manifest_name(name))
+        .collect::<Result<Vec<_>, _>>()?;
+    for standard in &parsed_standards {
+        shape.supported_standards.push(*standard);
+    }
+
+    for member in &contract.members {
+        match member {
+            ContractMember::Function(method) => {
+                shape.methods.push(function_spec_from_decl(method));
+            }
+            ContractMember::Event(event) => {
+                shape.events.push(event_spec_from_decl(event));
+            }
+            _ => {}
+        }
+    }
+
+    let mut messages = Vec::new();
+    for standard in parsed_standards {
+        if let Err(errors) = validate_standard(standard, &shape) {
+            messages.extend(
+                errors
+                    .into_iter()
+                    .map(|error| format!("{}: {error}", standard.manifest_name())),
+            );
+        }
+    }
+
+    if messages.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "supported standard compatibility failed: {}",
+            messages.join("; ")
+        ))
+    }
+}
+
+fn function_spec_from_decl(method: &FunctionDecl) -> FunctionSpec {
+    FunctionSpec::new(
+        method.name.clone(),
+        method
+            .params
+            .iter()
+            .map(|param| ParameterSpec::new(param.name.clone(), neo_type_for_manifest(&param.ty)))
+            .collect(),
+        neo_type_for_manifest(&method.return_ty),
+    )
+}
+
+fn event_spec_from_decl(event: &EventDecl) -> FunctionSpec {
+    FunctionSpec::new(
+        event.name.clone(),
+        event
+            .params
+            .iter()
+            .map(|param| ParameterSpec::new(param.name.clone(), neo_type_for_manifest(&param.ty)))
+            .collect(),
+        NeoType::Void,
+    )
+}
+
 fn build_manifest(ast: &SourceFile, compiled: &CompiledSourceFile) -> Result<Manifest, String> {
     let contract = ast
         .contract
         .as_ref()
         .ok_or_else(|| "missing contract".to_string())?;
     let manifest_attrs = parse_manifest_attributes(contract)?;
+    validate_supported_standards(contract, &manifest_attrs.supported_standards)?;
 
     // Compute script offsets for all routines in the flattened script.
     let mut off: u32 = 0;
@@ -281,20 +374,23 @@ fn build_manifest(ast: &SourceFile, compiled: &CompiledSourceFile) -> Result<Man
 }
 
 fn manifest_type_name(ty: &Type) -> String {
+    neo_type_for_manifest(ty).manifest_name().to_string()
+}
+
+fn neo_type_for_manifest(ty: &Type) -> NeoType {
     match ty {
-        Type::Void => "Void",
-        Type::Bool => "Boolean",
-        Type::Int => "Integer",
-        Type::String => "String",
-        Type::Hash160 => "Hash160",
-        Type::Hash256 => "Hash256",
-        Type::Buffer => "ByteArray",
-        Type::Any => "Any",
-        Type::Named(_) => "Any",
-        Type::Array(_) => "Array",
-        Type::Map { .. } => "Map",
+        Type::Void => NeoType::Void,
+        Type::Bool => NeoType::Boolean,
+        Type::Int => NeoType::Integer,
+        Type::String => NeoType::String,
+        Type::Hash160 => NeoType::Hash160,
+        Type::Hash256 => NeoType::Hash256,
+        Type::Buffer => NeoType::ByteArray,
+        Type::Any => NeoType::Any,
+        Type::Named(_) => NeoType::Any,
+        Type::Array(_) => NeoType::Array,
+        Type::Map { .. } => NeoType::Map,
     }
-    .to_string()
 }
 
 #[cfg(test)]
@@ -337,7 +433,7 @@ mod tests {
             #[author("core-dev")]
             #[email("core@example.com")]
             #[description("Production token")]
-            #[supportedStandards("NEP-17", "NEP-11")]
+            #[supportedStandards("NEP-24", "NEP-29")]
             #[permission("0x1234567890abcdef1234567890abcdef12345678", "transfer", "balanceOf")]
             #[trust("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd")]
             #[group("03b209fd4f04a9d3e8e7b4ad5c5f2d5148c10c7ad2e9eac19b7e8acb4d2f0a5f5f", "MEUCIQD")]
@@ -352,7 +448,7 @@ mod tests {
         let compiled = Codegen::new().codegen_source_file(&ast).expect("codegen");
         let manifest = build_manifest(&ast, &compiled).expect("manifest");
 
-        assert_eq!(manifest.supported_standards, vec!["NEP-17", "NEP-11"]);
+        assert_eq!(manifest.supported_standards, vec!["NEP-24", "NEP-29"]);
         assert_eq!(
             manifest.extra.get("author").map(String::as_str),
             Some("core-dev")
@@ -397,5 +493,67 @@ mod tests {
             "03b209fd4f04a9d3e8e7b4ad5c5f2d5148c10c7ad2e9eac19b7e8acb4d2f0a5f5f"
         );
         assert_eq!(manifest.groups[0].signature, "MEUCIQD");
+    }
+
+    #[test]
+    fn manifest_rejects_incomplete_supported_standard_abi() {
+        let src = r#"
+            #[supportedStandards("NEP-17")]
+            contract Token {
+                #[safe]
+                string symbol() {
+                    return "TOK";
+                }
+            }
+        "#;
+        let ast = parse_source_file(src).expect("parse");
+        let compiled = Codegen::new().codegen_source_file(&ast).expect("codegen");
+        let err = match build_manifest(&ast, &compiled) {
+            Ok(_) => panic!("expected NEP-17 validation error"),
+            Err(err) => err,
+        };
+
+        assert!(err.contains("NEP-17"));
+        assert!(err.contains("missing method `totalSupply`"));
+        assert!(err.contains("missing event `Transfer`"));
+    }
+
+    #[test]
+    fn manifest_accepts_complete_nep17_shape() {
+        let src = r#"
+            #[supportedStandards("NEP-17")]
+            contract Token {
+                event Transfer(hash160 source, hash160 dest, int amount);
+
+                #[safe]
+                int totalSupply() {
+                    return 0;
+                }
+
+                #[safe]
+                string symbol() {
+                    return "TOK";
+                }
+
+                #[safe]
+                int decimals() {
+                    return 8;
+                }
+
+                #[safe]
+                int balanceOf(hash160 account) {
+                    return 0;
+                }
+
+                bool transfer(hash160 source, hash160 dest, int amount, any data) {
+                    return true;
+                }
+            }
+        "#;
+        let ast = parse_source_file(src).expect("parse");
+        let compiled = Codegen::new().codegen_source_file(&ast).expect("codegen");
+        let manifest = build_manifest(&ast, &compiled).expect("manifest");
+
+        assert_eq!(manifest.supported_standards, vec!["NEP-17"]);
     }
 }
