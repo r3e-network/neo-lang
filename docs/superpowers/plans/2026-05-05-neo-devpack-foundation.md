@@ -194,3 +194,20 @@
 - [x] Validate supported NEP standards during manifest generation and surface actionable compiler errors.
 - [x] Preserve successful manifest generation for a complete minimal NEP-17 ABI.
 - [x] Document compiler-side NEP-17/NEP-11 standard validation.
+
+### Task 15: Devpack Template Compile Checks
+
+**Files:**
+- Modify: `neo-compiler/src/build_target.rs`
+- Modify: `neo-compiler/src/syntax/ast.rs`
+- Modify: `neo-compiler/src/target/syscall.rs`
+- Modify: `neo-devpack/src/templates.rs`
+- Modify: `README.md`
+- Modify: `neo-devpack/README.md`
+
+- [x] Add a red compiler test rendering every built-in devpack template through parse, type check, codegen, and manifest generation.
+- [x] Fix NEP-17/NEP-11 template parameter names that conflicted with neo-lang keywords.
+- [x] Express NEP-11 token IDs as `buffer` / ByteArray and expose `iterator` ABI return types.
+- [x] Allow `buffer` map keys for NEP-11 storage patterns.
+- [x] Allow concrete values to flow into `any` containers and allow `runtime.checkWitness(hash160)`.
+- [x] Document template compile coverage and the new ABI-facing `iterator` type.

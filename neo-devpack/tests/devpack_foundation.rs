@@ -289,16 +289,16 @@ fn templates_render_professional_starting_points_without_unresolved_markers() {
     )
     .unwrap();
     let source = &nep17.files[0].contents;
-    assert!(source.contains("bool transfer(hash160 from, hash160 to, int amount, any data)"));
-    assert!(source.contains("event Transfer(hash160 from, hash160 to, int amount);"));
+    assert!(source.contains("bool transfer(hash160 source, hash160 dest, int amount, any data)"));
+    assert!(source.contains("event Transfer(hash160 source, hash160 dest, int amount);"));
 
     let nep11 = render_template(TemplateKind::Nep11Nft, &TemplateOptions::new("Collectible"))
         .expect("NEP-11 template");
     let source = &nep11.files[0].contents;
-    assert!(source.contains("bool transfer(hash160 to, string tokenId, any data)"));
-    assert!(
-        source.contains("event Transfer(hash160 from, hash160 to, int amount, string tokenId);")
-    );
+    assert!(source.contains("iterator tokens()"));
+    assert!(source.contains("bool transfer(hash160 to, buffer tokenId, any data)"));
+    assert!(source
+        .contains("event Transfer(hash160 source, hash160 dest, int amount, buffer tokenId);"));
 }
 
 #[test]

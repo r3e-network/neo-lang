@@ -224,7 +224,7 @@ impl Syscall {
 
     pub const RUNTIME_CHECK_WITNESS: Syscall = Syscall {
         name: "System.Runtime.CheckWitness",
-        args: &[("hashOrPubkey", StackItemType::Buffer)],
+        args: &[("hashOrPubkey", StackItemType::ByteString)],
         return_type: Some(StackItemType::Boolean),
         callflags: CallFlags::None as u8,
     };

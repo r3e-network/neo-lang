@@ -387,6 +387,7 @@ fn neo_type_for_manifest(ty: &Type) -> NeoType {
         Type::Hash256 => NeoType::Hash256,
         Type::Buffer => NeoType::ByteArray,
         Type::Any => NeoType::Any,
+        Type::Named(name) if name == "iterator" => NeoType::Iterator,
         Type::Named(_) => NeoType::Any,
         Type::Array(_) => NeoType::Array,
         Type::Map { .. } => NeoType::Map,
@@ -397,6 +398,7 @@ fn neo_type_for_manifest(ty: &Type) -> NeoType {
 mod tests {
     use super::*;
     use crate::syntax::parser::parse_source_file;
+    use neo_devpack::templates::{render_template, TemplateKind, TemplateOptions};
 
     #[test]
     fn manifest_includes_synthetic_deploy_for_contract_storage_initializers() {
@@ -555,5 +557,34 @@ mod tests {
         let manifest = build_manifest(&ast, &compiled).expect("manifest");
 
         assert_eq!(manifest.supported_standards, vec!["NEP-17"]);
+    }
+
+    #[test]
+    fn devpack_templates_compile_to_manifest() {
+        let kinds = [
+            TemplateKind::HelloWorld,
+            TemplateKind::Nep17Token,
+            TemplateKind::Nep11Nft,
+            TemplateKind::StorageMap,
+            TemplateKind::OracleConsumer,
+            TemplateKind::UpgradeableAdmin,
+        ];
+
+        for kind in kinds {
+            let rendered =
+                render_template(kind, &TemplateOptions::new("Sample")).expect("template");
+            let source = rendered
+                .files
+                .iter()
+                .find(|file| file.path.ends_with(".neo"))
+                .expect("template source file");
+            let ast = parse_source_file(&source.contents)
+                .unwrap_or_else(|err| panic!("{kind:?} failed to parse: {err:?}"));
+            let compiled = Codegen::new()
+                .codegen_source_file(&ast)
+                .unwrap_or_else(|err| panic!("{kind:?} failed codegen: {err}"));
+            build_manifest(&ast, &compiled)
+                .unwrap_or_else(|err| panic!("{kind:?} failed manifest generation: {err}"));
+        }
     }
 }

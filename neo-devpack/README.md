@@ -23,6 +23,7 @@ It is modeled after the responsibilities of `neo-project/neo-devpack-dotnet`, ad
 - Deep validators: NEP-17 and NEP-11 ABI/event shape.
 - Templates: hello world, NEP-17 token, NEP-11 NFT, storage map, oracle consumer, upgradeable admin.
 - Compiler integration: `neo-compiler` consumes this catalog for `neo-devpack` import validation, runtime/storage/contract/crypto/iterator syscall imports, and NEP-17/NEP-11 `supportedStandards` ABI validation.
+- Template compile checks: all built-in `.neo` templates are parsed, type checked, code generated, and converted to manifests in the compiler test suite.
 
 ## Compiler Imports
 

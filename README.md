@@ -54,8 +54,9 @@ See `neo-devpack/README.md` and `docs/superpowers/plans/2026-05-05-neo-n3-compil
 - `hash160`: The 160-bit hash type, and the underlying type is 20-byte byte-string(i.e. string),  Literal: `"0x1234567890abcdef1234567890abcdef12345678"`.
 - `hash256`: The 256-bit hash type, and the underlying type is 32-byte byte-string(i.e. string), Literal: `"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`.
 - `type[]`: The array type. (dynamic array for generic type). Literal: `int[] { 1, 2, 3 }` (element type required; use `{`…`}` for elements, not `[`…`]`).
-- `map[key, value]`: The map type. key-type is limited to `bool`, `int`, `string`, `hash160`, `hash256`, and value-type can be any type. Literal: `map[string, string] { "key1": "value1", "key2": "value2" }`, or `map[int, string] { 1: "value1", 2: "value2" }`.
+- `map[key, value]`: The map type. key-type is limited to `bool`, `int`, `string`, `hash160`, `hash256`, `buffer`, and value-type can be any type. Literal: `map[string, string] { "key1": "value1", "key2": "value2" }`, or `map[int, string] { 1: "value1", 2: "value2" }`.
 - `buffer`: The buffer type. (dynamic bytes buffer). Literal: `b"1234567890"`.
+- `iterator`: The Neo interop iterator handle type. It is primarily used for ABI signatures such as NEP-11 `tokens()` / `tokensOf(...)`.
 - `any`: The any type. Literal: any of the above types.
 
 ## Self-defined Types

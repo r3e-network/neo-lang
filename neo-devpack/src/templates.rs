@@ -152,7 +152,7 @@ contract {{contract_name}} {
     map[hash160, int] balances;
     int supply = 0;
 
-    event Transfer(hash160 from, hash160 to, int amount);
+    event Transfer(hash160 source, hash160 dest, int amount);
 
     #[safe]
     int totalSupply() {
@@ -174,21 +174,21 @@ contract {{contract_name}} {
         return self.balances[account];
     }
 
-    bool transfer(hash160 from, hash160 to, int amount, any data) {
+    bool transfer(hash160 source, hash160 dest, int amount, any data) {
         assert(amount >= 0, "amount must be non-negative");
         if amount == 0 {
-            emit Transfer(from, to, amount);
+            emit Transfer(source, dest, amount);
             return true;
         }
 
-        var fromBalance = self.balances[from];
+        var fromBalance = self.balances[source];
         if fromBalance < amount {
             return false;
         }
 
-        self.balances[from] = fromBalance - amount;
-        self.balances[to] = self.balances[to] + amount;
-        emit Transfer(from, to, amount);
+        self.balances[source] = fromBalance - amount;
+        self.balances[dest] = self.balances[dest] + amount;
+        emit Transfer(source, dest, amount);
         return true;
     }
 }
@@ -199,11 +199,11 @@ const NEP11_NFT: &str = r#"#[author("{{author}}")]
 #[description("A NEP-11 NFT contract.")]
 #[supportedStandards("NEP-11")]
 contract {{contract_name}} {
-    map[string, hash160] owners;
-    map[string, string] names;
+    map[buffer, hash160] owners;
+    map[buffer, string] names;
     int supply = 0;
 
-    event Transfer(hash160 from, hash160 to, int amount, string tokenId);
+    event Transfer(hash160 source, hash160 dest, int amount, buffer tokenId);
 
     #[safe]
     string symbol() {
@@ -221,7 +221,7 @@ contract {{contract_name}} {
     }
 
     #[safe]
-    any tokens() {
+    iterator tokens() {
         return null;
     }
 
@@ -231,23 +231,23 @@ contract {{contract_name}} {
     }
 
     #[safe]
-    any tokensOf(hash160 owner) {
+    iterator tokensOf(hash160 owner) {
         return null;
     }
 
     #[safe]
-    hash160 ownerOf(string tokenId) {
+    hash160 ownerOf(buffer tokenId) {
         return self.owners[tokenId];
     }
 
     #[safe]
-    map[string, string] properties(string tokenId) {
+    map[string, string] properties(buffer tokenId) {
         return map[string, string] {
             "name": self.names[tokenId]
         };
     }
 
-    bool transfer(hash160 to, string tokenId, any data) {
+    bool transfer(hash160 to, buffer tokenId, any data) {
         var owner = self.owners[tokenId];
         self.owners[tokenId] = to;
         emit Transfer(owner, to, 1, tokenId);
