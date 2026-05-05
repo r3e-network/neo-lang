@@ -4,7 +4,7 @@
 
 **Goal:** Add a tested `neo-devpack` workspace crate that provides Neo N3 API metadata, manifest helpers, standard validators, templates, and testing utilities for `neo-lang`.
 
-**Architecture:** The new crate is independent from `neo-compiler` and exposes small modules with stable data structures. Compiler integration is deliberately deferred until package/import resolution is implemented.
+**Architecture:** The new crate is independent from `neo-compiler` and exposes small modules with stable data structures. `neo-compiler` can depend on `neo-devpack` to validate imports and progressively lower framework modules without duplicating catalog data.
 
 **Tech Stack:** Rust 2021, Cargo workspace, serde/serde_json, unit and integration tests.
 
@@ -72,3 +72,23 @@
 - [ ] Run `cargo fmt --all -- --check`.
 - [ ] Run `cargo test --workspace --all-targets`.
 - [ ] Run `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
+
+### Task 7: First Compiler Import Integration
+
+**Files:**
+- Create: `neo-compiler/src/devpack.rs`
+- Modify: `neo-compiler/Cargo.toml`
+- Modify: `neo-compiler/src/main.rs`
+- Modify: `neo-compiler/src/typecheck/mod.rs`
+- Modify: `neo-compiler/src/ir/lower/mod.rs`
+- Modify: `neo-compiler/src/ir/lower/builder.rs`
+- Modify: `neo-compiler/src/codegen/mod.rs`
+- Modify: `neo-compiler/src/codegen/function.rs`
+- Modify: `neo-compiler/src/codegen/expr/mod.rs`
+- Modify: `neo-compiler/src/codegen/expr/builtin_call.rs`
+- Modify: compiler tests and devpack README
+
+- [x] Add red tests for `import rt from "neo-devpack/runtime"; rt.getNetwork()`.
+- [x] Validate unknown `neo-devpack/<module>` imports during type checking.
+- [x] Route runtime import aliases through existing runtime syscall typecheck, IR lowering, and legacy codegen paths.
+- [x] Document supported compiler import syntax and current non-runtime limitations.

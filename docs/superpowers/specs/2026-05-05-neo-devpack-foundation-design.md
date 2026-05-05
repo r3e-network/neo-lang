@@ -16,7 +16,7 @@ Add a new workspace crate, `neo-devpack`, with focused modules:
 - `templates`: built-in `.neo` templates for common contracts.
 - `testing`: in-memory contract storage, notification capture, and gas accounting primitives for fast tests.
 
-The crate stays independent from `neo-compiler` so compiler and devpack can evolve without circular dependencies. Future compiler integration can consume these APIs by adding a dependency from `neo-compiler` to `neo-devpack` when import resolution is implemented.
+The crate stays independent from `neo-compiler` so the devpack has no compiler dependency. The compiler may depend on `neo-devpack` to consume the shared catalog for import validation and lowering metadata.
 
 ## Devpack API Model
 
@@ -52,6 +52,15 @@ The devpack testing module provides deterministic primitives:
 - `GasMeter` for simple gas budgets and accounting.
 
 These do not replace a NeoVM integration harness; they are the fast unit-test layer that later compiler/runtime tests can reuse.
+
+## Compiler Integration
+
+The first compiler integration layer uses `neo-devpack::api::ApiCatalog` to validate imports in these forms:
+
+- `import runtime from "neo-devpack";`
+- `import rt from "neo-devpack/runtime";`
+
+Runtime module aliases lower to the existing `System.Runtime.*` syscall path. Unknown devpack modules are rejected during type checking. Known non-runtime modules currently emit an explicit unsupported diagnostic until storage, contract, crypto, and iterator import lowerings are implemented.
 
 ## Testing Strategy
 

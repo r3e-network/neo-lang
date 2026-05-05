@@ -1,4 +1,5 @@
 use super::*;
+use crate::devpack::DevPackImports;
 use crate::target::syscall::Syscall;
 use crate::target::Instruction;
 
@@ -12,6 +13,7 @@ fn compile_expr_stub(
     let mut builder = Builder::new();
     let mut pending = Vec::new();
     let empty_pkg = HashMap::new();
+    let devpack_imports = DevPackImports::default();
     ExprGen {
         builder: &mut builder,
         env: &mut env,
@@ -20,6 +22,7 @@ fn compile_expr_stub(
         contract_fields: None,
         pending_call_l: &mut pending,
         package_fn_arity: &empty_pkg,
+        devpack_imports: &devpack_imports,
     }
     .compile_expr(expr)?;
     Ok(builder.into_instructions())

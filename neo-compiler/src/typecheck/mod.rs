@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
+use crate::devpack::{DevPackImports, DevPackModule};
 use crate::syntax::ast::*;
 use crate::target::syscall::runtime_syscall_for_method;
 use crate::target::StackItemType;
@@ -26,6 +27,8 @@ fn err(s: impl std::fmt::Display) -> TypeError {
 
 impl SourceFile {
     pub(crate) fn type_check(&self) -> Result<(), TypeError> {
+        let devpack_imports = DevPackImports::from_imports(&self.imports).map_err(err)?;
+
         let mut structs: HashMap<String, &StructDecl> = HashMap::new();
         for struct_decl in &self.structs {
             if structs
@@ -79,6 +82,7 @@ impl SourceFile {
             package_fns: &package_fns,
             events: &events,
             contract_fields,
+            devpack_imports: &devpack_imports,
         };
 
         self.check_source_file_map_types()?;
@@ -161,6 +165,7 @@ struct TypeCheckContext<'a> {
     package_fns: &'a HashMap<String, &'a FunctionDecl>,
     events: &'a HashMap<String, &'a EventDecl>,
     contract_fields: &'a [ContractField],
+    devpack_imports: &'a DevPackImports,
 }
 
 enum FnType {
@@ -887,8 +892,11 @@ impl<'a> TypeCheckContext<'a> {
     fn check_call(&self, env: &mut FnEnv, callee: &Expr, args: &[Expr]) -> Result<Type, TypeError> {
         if let Expr::Member { base, field } = callee {
             if let Expr::Ident(pkg) = base.as_ref() {
-                if pkg == "runtime" {
+                if self.devpack_imports.is_runtime_alias(pkg) {
                     return self.check_runtime_call(field, args, env);
+                }
+                if let Some(module) = self.devpack_imports.module_for_alias(pkg) {
+                    return self.unsupported_devpack_module_call(module, field);
                 }
             }
             if let Some(ty) = self.check_builtin_method_call(env, base.as_ref(), field, args)? {
@@ -954,6 +962,18 @@ impl<'a> TypeCheckContext<'a> {
         }
 
         Err(err("only package-level functions, built-in functions, struct methods, and runtime.* calls are supported"))
+    }
+
+    fn unsupported_devpack_module_call(
+        &self,
+        module: DevPackModule,
+        method: &str,
+    ) -> Result<Type, TypeError> {
+        Err(err(format!(
+            "neo-devpack module `{}` is recognized, but `{}` calls are not supported by neo-compiler yet",
+            module.as_str(),
+            method
+        )))
     }
 
     /// `self.<map>.has` / `self.<map>.remove` on a contract storage `map` field; otherwise [`None`].

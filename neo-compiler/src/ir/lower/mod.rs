@@ -13,6 +13,7 @@ mod tests;
 
 use std::collections::BTreeMap;
 
+use crate::devpack::DevPackImports;
 use crate::ir::lower::env::Env;
 use crate::ir::*;
 use crate::syntax::ast::*;
@@ -26,6 +27,23 @@ pub fn lower_function_to_ir(
     contract_fields: Option<&[ContractField]>,
     package_fn_arity: &std::collections::HashMap<String, usize>,
 ) -> Result<FunctionIr, LowerError> {
+    let devpack_imports = DevPackImports::default();
+    lower_function_to_ir_with_devpack_imports(
+        func,
+        structs,
+        contract_fields,
+        package_fn_arity,
+        &devpack_imports,
+    )
+}
+
+pub fn lower_function_to_ir_with_devpack_imports(
+    func: &FunctionDecl,
+    structs: &[StructDecl],
+    contract_fields: Option<&[ContractField]>,
+    package_fn_arity: &std::collections::HashMap<String, usize>,
+    devpack_imports: &DevPackImports,
+) -> Result<FunctionIr, LowerError> {
     let mut builder = Builder {
         blocks: BTreeMap::new(),
         current_block: BlockId(0),
@@ -35,6 +53,7 @@ pub fn lower_function_to_ir(
         structs,
         contract_fields,
         package_fn_arity,
+        devpack_imports,
     };
     let entry = builder.new_block();
     builder.current_block = entry;

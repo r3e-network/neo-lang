@@ -221,6 +221,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "hex",
+ "neo-devpack",
  "num_enum",
  "serde",
  "serde_json",

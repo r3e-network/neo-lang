@@ -35,6 +35,40 @@ fn accepts_matching_package_call() {
 }
 
 #[test]
+fn accepts_neo_devpack_runtime_import_alias_call() {
+    let src = r#"
+        import rt from "neo-devpack/runtime";
+
+        contract C {
+            #[safe]
+            int network() {
+                return rt.getNetwork();
+            }
+        }
+    "#;
+    let ast = parse_source_file(src).expect("parse");
+    ast.type_check().expect("typecheck");
+}
+
+#[test]
+fn rejects_unknown_neo_devpack_module_import() {
+    let src = r#"
+        import unknown from "neo-devpack/not-a-module";
+
+        contract C {
+            void m() { }
+        }
+    "#;
+    let ast = parse_source_file(src).expect("parse");
+    let err = ast.type_check().unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("unknown neo-devpack module `not-a-module`"),
+        "{err}"
+    );
+}
+
+#[test]
 fn rejects_map_with_non_primitive_key_type() {
     let src = r#"
         package demo;

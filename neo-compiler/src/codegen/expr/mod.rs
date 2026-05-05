@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use crate::codegen::env::*;
 use crate::codegen::CodegenError;
+use crate::devpack::DevPackImports;
 use crate::syntax::ast::*;
 use crate::target::opcode::OpCode;
 use crate::target::{Builder, StackItemType};
@@ -40,6 +41,9 @@ pub(crate) struct ExprGen<'a, 'b> {
 
     /// Top-level `fn name(...)` in the same source file: `name` → parameter count (for `name(...)` → `CALL_L`).
     pub(crate) package_fn_arity: &'b HashMap<String, usize>,
+
+    /// Imported `neo-devpack` module aliases, if any.
+    pub(crate) devpack_imports: &'a DevPackImports,
 }
 
 impl<'a, 'b> ExprGen<'a, 'b> {

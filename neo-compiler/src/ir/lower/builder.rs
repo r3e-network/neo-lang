@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use crate::devpack::DevPackImports;
 use crate::ir::lower::env::Env;
 use crate::ir::lower::helpers::*;
 use crate::ir::*;
@@ -14,6 +15,7 @@ pub struct Builder<'a> {
     pub structs: &'a [StructDecl],
     pub contract_fields: Option<&'a [ContractField]>,
     pub package_fn_arity: &'a HashMap<String, usize>,
+    pub devpack_imports: &'a DevPackImports,
 }
 
 impl<'a> Builder<'a> {
@@ -634,8 +636,15 @@ impl<'a> Builder<'a> {
     ) -> Result<ValueRef, LowerError> {
         if let Expr::Member { base, field } = callee {
             if let Expr::Ident(pkg) = base.as_ref() {
-                if pkg == "runtime" {
+                if self.devpack_imports.is_runtime_alias(pkg) {
                     return self.lower_runtime_call(field, args, env);
+                }
+                if let Some(module) = self.devpack_imports.module_for_alias(pkg) {
+                    return Err(err(format!(
+                        "neo-devpack module `{}` is recognized, but `{}` calls are not supported by neo-compiler yet",
+                        module.as_str(),
+                        field
+                    )));
                 }
             }
 

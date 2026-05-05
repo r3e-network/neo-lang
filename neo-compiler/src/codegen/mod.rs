@@ -62,8 +62,9 @@ mod tests;
 
 use std::collections::HashMap;
 
-use crate::codegen::function::{compile_function, lower_struct_method};
+use crate::codegen::function::{compile_function_with_devpack_imports, lower_struct_method};
 use crate::codegen::opt::Optimizer;
+use crate::devpack::DevPackImports;
 use crate::syntax::ast::*;
 use crate::target::opcode::OpCode;
 use crate::target::Instruction;
@@ -235,6 +236,8 @@ impl Codegen {
         source: &SourceFile,
     ) -> Result<CompiledSourceFile, CodegenError> {
         source.type_check()?;
+        let devpack_imports =
+            DevPackImports::from_imports(&source.imports).map_err(CodegenError::Unsupported)?;
         let get_contract_fields = |contract: &ContractDecl| {
             contract
                 .members
@@ -267,7 +270,13 @@ impl Codegen {
 
         let mut package_functions = Vec::with_capacity(source.functions.len());
         for func in &source.functions {
-            let compiled = compile_function(func, &source.structs, None, &package_fn_arity)?;
+            let compiled = compile_function_with_devpack_imports(
+                func,
+                &source.structs,
+                None,
+                &package_fn_arity,
+                &devpack_imports,
+            )?;
             package_functions.push(CompiledFunction {
                 name: func.name.clone(),
                 contract: None,
@@ -280,8 +289,13 @@ impl Codegen {
         for struct_decl in &source.structs {
             for method in &struct_decl.methods {
                 let lowered = lower_struct_method(&struct_decl.name, method);
-                let compiled =
-                    compile_function(&lowered, &source.structs, None, &package_fn_arity)?;
+                let compiled = compile_function_with_devpack_imports(
+                    &lowered,
+                    &source.structs,
+                    None,
+                    &package_fn_arity,
+                    &devpack_imports,
+                )?;
                 struct_methods.push(CompiledFunction {
                     name: lowered.name.clone(),
                     contract: None,
@@ -295,11 +309,12 @@ impl Codegen {
         if let Some(contract_decl) = &source.contract {
             for member in &contract_decl.members {
                 if let ContractMember::Function(method) = member {
-                    let compiled = compile_function(
+                    let compiled = compile_function_with_devpack_imports(
                         method,
                         &source.structs,
                         storage_fields,
                         &package_fn_arity,
+                        &devpack_imports,
                     )?;
                     contract_methods.push(CompiledFunction {
                         name: method.name.clone(),

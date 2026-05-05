@@ -1,6 +1,7 @@
 //! Tests for the codegen module.
 
 use super::*;
+use crate::codegen::function::compile_function;
 use crate::syntax::parser::parse_source_file;
 use crate::target::opcode::OpCode;
 use crate::target::syscall::Syscall;
@@ -79,6 +80,31 @@ fn codegen_empty_source_no_functions() {
     assert!(out.package_functions.is_empty());
     assert!(out.struct_methods.is_empty());
     assert!(out.contract_methods.is_empty());
+}
+
+#[test]
+fn codegen_neo_devpack_runtime_alias_emits_syscall() {
+    let src = r#"
+        import rt from "neo-devpack/runtime";
+
+        contract C {
+            #[safe]
+            int network() {
+                return rt.getNetwork();
+            }
+        }
+    "#;
+    let sf = parse_source_file(src).unwrap();
+    let out = Codegen::new().codegen_source_file(&sf).unwrap();
+    let method = &out.contract_methods[0];
+    assert!(
+        method
+            .instructions
+            .iter()
+            .any(|instruction| instruction.opcode == OpCode::SYSCALL
+                && instruction.operands == Syscall::RUNTIME_GET_NETWORK.token().to_le_bytes()),
+        "expected rt.getNetwork() to compile to System.Runtime.GetNetwork"
+    );
 }
 
 #[test]
@@ -303,7 +329,7 @@ fn compile_add_returns_ldarg_add_ret() {
                 opcode: OpCode::RET,
                 operands: a3,
             },
-        ] if locals == &vec![0, 2]
+        ] if locals.as_slice() == [0, 2]
             && a0.is_empty()
             && a1.is_empty()
             && a2.is_empty()
