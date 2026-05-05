@@ -181,7 +181,10 @@ pub fn build_manifest_breaks(
     manifest: &Manifest,
     instructions: &[Instruction],
 ) -> Result<Vec<(usize, String)>, String> {
-    let script_len: usize = instructions.iter().map(|instruction| instruction.encoded_len()).sum();
+    let script_len: usize = instructions
+        .iter()
+        .map(|instruction| instruction.encoded_len())
+        .sum();
     let mut starts = BTreeSet::new();
     let mut o = 0usize;
     for inst in instructions {

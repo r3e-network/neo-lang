@@ -4,7 +4,11 @@ use crate::syntax::ast::Expr;
 use super::ExprGen;
 
 impl ExprGen<'_, '_> {
-    pub(super) fn compile_call(&mut self, callee: &Expr, args: &[Expr]) -> Result<(), CodegenError> {
+    pub(super) fn compile_call(
+        &mut self,
+        callee: &Expr,
+        args: &[Expr],
+    ) -> Result<(), CodegenError> {
         if let Expr::Member { base, field } = callee {
             if let Expr::Ident(pkg) = base.as_ref() {
                 if pkg == "runtime" {
@@ -49,4 +53,3 @@ impl ExprGen<'_, '_> {
         ))
     }
 }
-

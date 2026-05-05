@@ -130,9 +130,7 @@ impl FunctionIr {
                             *block_id,
                             *value,
                         )?;
-                    } else {
-                        builder.push_null();
-                    }
+                    } // no stack item if no return value
                     builder.emit(OpCode::RET);
                 }
                 Terminator::Jump { target, args } => {

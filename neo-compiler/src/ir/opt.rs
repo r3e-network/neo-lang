@@ -85,7 +85,10 @@ impl FunctionIr {
                     Instr::HasKey { map, key } => {
                         *map = norm(*map, &subst);
                         *key = norm(*key, &subst);
-                        Some(PureKey::HasKey { map: *map, key: *key })
+                        Some(PureKey::HasKey {
+                            map: *map,
+                            key: *key,
+                        })
                     }
                     Instr::SubStr {
                         value,
@@ -209,7 +212,10 @@ enum PureKey {
     Size(ValueRef),
     Keys(ValueRef),
     Values(ValueRef),
-    HasKey { map: ValueRef, key: ValueRef },
+    HasKey {
+        map: ValueRef,
+        key: ValueRef,
+    },
     SubStr {
         value: ValueRef,
         start: ValueRef,

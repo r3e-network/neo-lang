@@ -92,13 +92,17 @@ fn lowering_supports_builtin_method_calls() {
         .iter()
         .find(|f| f.name == "f")
         .unwrap();
-    let ir = lower_function_to_ir(func, &[], None, &pkg).expect("builtin method calls should lower");
+    let ir =
+        lower_function_to_ir(func, &[], None, &pkg).expect("builtin method calls should lower");
     let has_remove = ir.blocks.values().any(|bb| {
         bb.instrs
             .iter()
             .any(|(_, instr)| matches!(instr, Instr::Remove { .. }))
     });
-    assert!(has_remove, "expected map.remove(...) lowering to use Instr::Remove");
+    assert!(
+        has_remove,
+        "expected map.remove(...) lowering to use Instr::Remove"
+    );
 }
 
 #[test]

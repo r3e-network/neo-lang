@@ -88,8 +88,7 @@ impl<'a> FunctionCompiler<'a> {
                 .last()
                 .is_some_and(|instruction| instruction.opcode == OpCode::RET);
             if !ends_with_ret {
-                self.builder.push_null();
-                self.builder.emit(OpCode::RET);
+                self.builder.emit(OpCode::RET); // no stack item if no return value
             }
         }
 
@@ -176,10 +175,8 @@ impl<'a> FunctionCompiler<'a> {
             Stmt::Return(opt) => {
                 if let Some(expr) = opt {
                     self.compile_expr(expr)?;
-                } else {
-                    self.builder.push_null();
                 }
-                self.builder.emit(OpCode::RET);
+                self.builder.emit(OpCode::RET); // no stack item if no return value
             }
             Stmt::Block(block) => self.compile_block(block)?,
             Stmt::ForArray { item, iter, body } => {

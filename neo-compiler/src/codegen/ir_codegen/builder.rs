@@ -15,12 +15,12 @@ impl Builder {
         &mut self,
         ctx: &IrStackifyContext<'_>,
         emitted_spills: &mut HashSet<ValueId>,
-        cur_bb: BlockId,
+        current_block: BlockId,
         args: &[ValueRef],
     ) -> Result<(), CodegenError> {
         // Push in reverse, so that param0 ends up deepest (caller pushes args in order).
         for arg in args.iter().rev() {
-            self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *arg)?;
+            self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *arg)?;
         }
         Ok(())
     }
@@ -88,7 +88,7 @@ impl Builder {
         &mut self,
         ctx: &IrStackifyContext<'_>,
         emitted_spills: &mut HashSet<ValueId>,
-        cur_bb: BlockId,
+        current_block: BlockId,
         field_name: &str,
         key_ty: &Type,
         key: ValueRef,
@@ -96,7 +96,7 @@ impl Builder {
         let mut prefix = field_name.as_bytes().to_vec();
         prefix.push(0);
         self.push_data(&prefix);
-        self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, key)?;
+        self.emit_value_ref_stackified(ctx, emitted_spills, current_block, key)?;
         self.emit_map_key_as_bytestring(key_ty)?;
         self.emit(OpCode::CAT);
         Ok(())
@@ -106,13 +106,15 @@ impl Builder {
         &mut self,
         ctx: &IrStackifyContext<'_>,
         emitted_spills: &mut HashSet<ValueId>,
-        cur_bb: BlockId,
+        current_block: BlockId,
         value_ref: ValueRef,
     ) -> Result<(), CodegenError> {
         match value_ref {
-            ValueRef::Value(id) => self.emit_value_id_stackified(ctx, emitted_spills, cur_bb, id),
+            ValueRef::Value(id) => {
+                self.emit_value_id_stackified(ctx, emitted_spills, current_block, id)
+            }
             ValueRef::Param(ParamId(id)) => {
-                if cur_bb == ctx.entry_bb {
+                if current_block == ctx.entry_bb {
                     let index = id as u8;
                     if index >= ctx.arg_count {
                         return Err(CodegenError::Unsupported(format!(
@@ -123,12 +125,16 @@ impl Builder {
                     self.emit_ldarg(index);
                     Ok(())
                 } else {
-                    let slot = ctx.param_slot.get(&(cur_bb, id)).copied().ok_or_else(|| {
-                        CodegenError::Unsupported(format!(
-                            "ir-codegen: unknown param {id} in block {:?}",
-                            cur_bb
-                        ))
-                    })?;
+                    let slot = ctx
+                        .param_slot
+                        .get(&(current_block, id))
+                        .copied()
+                        .ok_or_else(|| {
+                            CodegenError::Unsupported(format!(
+                                "ir-codegen: unknown param {id} in block {:?}",
+                                current_block
+                            ))
+                        })?;
                     self.emit_ldloc(slot);
                     Ok(())
                 }
@@ -140,7 +146,7 @@ impl Builder {
         &mut self,
         ctx: &IrStackifyContext<'_>,
         emitted_spills: &mut HashSet<ValueId>,
-        cur_bb: BlockId,
+        current_block: BlockId,
         id: ValueId,
     ) -> Result<(), CodegenError> {
         let IrStackifyContext {
@@ -173,7 +179,7 @@ impl Builder {
                     .ok_or_else(|| {
                         CodegenError::Unsupported("ir-codegen: missing spilled value def".into())
                     })?;
-                self.emit_pure_instr_stackified(ctx, emitted_spills, cur_bb, instr)?;
+                self.emit_pure_instr_stackified(ctx, emitted_spills, current_block, instr)?;
                 // Keep a copy for both stack (this use) and local slot (future uses).
                 self.emit(OpCode::DUP);
                 self.emit_stloc(slot);
@@ -191,7 +197,7 @@ impl Builder {
             .ok_or_else(|| {
                 CodegenError::Unsupported(format!(
                     "ir-codegen: unknown value {:?} in block {:?}",
-                    id, cur_bb
+                    id, current_block
                 ))
             })?;
         if instr.has_side_effects() {
@@ -199,14 +205,14 @@ impl Builder {
                 "ir-codegen: side-effect value must be spilled or emitted in order".into(),
             ));
         }
-        self.emit_pure_instr_stackified(ctx, emitted_spills, cur_bb, instr)
+        self.emit_pure_instr_stackified(ctx, emitted_spills, current_block, instr)
     }
 
     pub(super) fn emit_pure_instr_stackified(
         &mut self,
         ctx: &IrStackifyContext<'_>,
         emitted_spills: &mut HashSet<ValueId>,
-        cur_bb: BlockId,
+        current_block: BlockId,
         instr: &Instr,
     ) -> Result<(), CodegenError> {
         match instr {
@@ -215,7 +221,7 @@ impl Builder {
                 Ok(())
             }
             Instr::StructFieldGet { base, index } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *base)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *base)?;
                 self.push_int(*index as i64);
                 self.emit(OpCode::PICKITEM);
                 Ok(())
@@ -223,11 +229,11 @@ impl Builder {
             Instr::IndexGet { base, index } => {
                 if base == index {
                     // e.g. `a[a]` — one evaluation, duplicate for PICKITEM operands.
-                    self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *base)?;
+                    self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *base)?;
                     self.emit(OpCode::DUP);
                 } else {
-                    self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *base)?;
-                    self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *index)?;
+                    self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *base)?;
+                    self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *index)?;
                 }
                 self.emit(OpCode::PICKITEM);
                 Ok(())
@@ -254,10 +260,10 @@ impl Builder {
                     self.emit_ldarg(index);
                     Ok(())
                 }
-                other => self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, other),
+                other => self.emit_value_ref_stackified(ctx, emitted_spills, current_block, other),
             },
             Instr::Unary { op, value } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
                 match op {
                     UnaryOp::Positive => {}
                     UnaryOp::Negative => self.emit(OpCode::NEGATE),
@@ -269,11 +275,11 @@ impl Builder {
             Instr::Binary { op, left, right } => {
                 if left == right {
                     // Common after CSE: `dx * dx`, `x + x`, etc. — avoid recomputing or reloading locals.
-                    self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *left)?;
+                    self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *left)?;
                     self.emit(OpCode::DUP);
                 } else {
-                    self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *left)?;
-                    self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *right)?;
+                    self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *left)?;
+                    self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *right)?;
                 }
                 if matches!(op, BinaryOp::And | BinaryOp::Or) {
                     return Err(CodegenError::Unsupported(
@@ -298,7 +304,7 @@ impl Builder {
                 self.emit_contract_map_composite_key(
                     ctx,
                     emitted_spills,
-                    cur_bb,
+                    current_block,
                     field,
                     key_ty,
                     *key,
@@ -311,7 +317,7 @@ impl Builder {
                 self.emit_contract_map_composite_key(
                     ctx,
                     emitted_spills,
-                    cur_bb,
+                    current_block,
                     field,
                     key_ty,
                     *key,
@@ -324,7 +330,7 @@ impl Builder {
             // Contract storage arrays are not supported.
             Instr::StructPack { field_values, .. } => {
                 for vr in field_values {
-                    self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *vr)?;
+                    self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *vr)?;
                 }
                 self.push_int(field_values.len() as i64);
                 self.emit(OpCode::PACK);
@@ -332,7 +338,7 @@ impl Builder {
             }
             Instr::ArrayPack { elements } => {
                 for vr in elements.iter().rev() {
-                    self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *vr)?;
+                    self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *vr)?;
                 }
                 self.push_int(elements.len() as i64);
                 self.emit(OpCode::PACK);
@@ -340,31 +346,31 @@ impl Builder {
             }
             Instr::MapPack { pairs } => {
                 for (k, v) in pairs.iter().rev() {
-                    self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *v)?;
-                    self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *k)?;
+                    self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *v)?;
+                    self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *k)?;
                 }
                 self.push_int(pairs.len() as i64);
                 self.emit(OpCode::PACKMAP);
                 Ok(())
             }
             Instr::Size { value } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
                 self.emit(OpCode::SIZE);
                 Ok(())
             }
             Instr::Keys { map } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *map)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *map)?;
                 self.emit(OpCode::KEYS);
                 Ok(())
             }
             Instr::Values { map } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *map)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *map)?;
                 self.emit(OpCode::VALUES);
                 Ok(())
             }
             Instr::HasKey { map, key } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *map)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *key)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *map)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *key)?;
                 self.emit(OpCode::HASKEY);
                 Ok(())
             }
@@ -373,14 +379,14 @@ impl Builder {
                 start,
                 length,
             } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *start)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *length)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *start)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *length)?;
                 self.emit(OpCode::SUBSTR);
                 Ok(())
             }
             Instr::Sqrt { value } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
                 self.emit(OpCode::SQRT);
                 Ok(())
             }
@@ -389,9 +395,9 @@ impl Builder {
                 other,
                 modulus,
             } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *other)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *modulus)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *other)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *modulus)?;
                 self.emit(OpCode::MODMUL);
                 Ok(())
             }
@@ -400,9 +406,9 @@ impl Builder {
                 exponent,
                 modulus,
             } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *exponent)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *modulus)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *exponent)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *modulus)?;
                 self.emit(OpCode::MODPOW);
                 Ok(())
             }
@@ -411,14 +417,14 @@ impl Builder {
                 min_inclusive,
                 max_exclusive,
             } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *min_inclusive)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *max_exclusive)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *min_inclusive)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *max_exclusive)?;
                 self.emit(OpCode::WITHIN);
                 Ok(())
             }
             Instr::Cast { value, ty } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
                 let op = get_operand_for_type(ty).ok_or_else(|| {
                     CodegenError::Unsupported(format!(
                         "ir-codegen: `as` to `{ty:?}` is not supported yet",
@@ -428,14 +434,14 @@ impl Builder {
                 Ok(())
             }
             Instr::Min { left, right } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *left)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *right)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *left)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *right)?;
                 self.emit(OpCode::MIN);
                 Ok(())
             }
             Instr::Max { left, right } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *left)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *right)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *left)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *right)?;
                 self.emit(OpCode::MAX);
                 Ok(())
             }
@@ -449,7 +455,7 @@ impl Builder {
         &mut self,
         ctx: &IrStackifyContext<'_>,
         emitted_spills: &mut HashSet<ValueId>,
-        cur_bb: BlockId,
+        current_block: BlockId,
         mux: &mut IrSideEffectMux<'_>,
         out: ValueId,
         instr: &Instr,
@@ -462,9 +468,9 @@ impl Builder {
         } = ctx;
         match instr {
             Instr::IndexSet { base, index, value } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *base)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *index)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *base)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *index)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
 
                 let out_uses = uses.get(&out).copied().unwrap_or(0);
                 if out_uses > 0 {
@@ -483,9 +489,9 @@ impl Builder {
                 Ok(())
             }
             Instr::StructFieldSet { base, index, value } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *base)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *base)?;
                 self.push_int(*index as i64);
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
 
                 let out_uses = uses.get(&out).copied().unwrap_or(0);
                 if out_uses > 0 {
@@ -507,7 +513,7 @@ impl Builder {
                 value_ty,
                 value,
             } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
                 let out_uses = uses.get(&out).copied().unwrap_or(0);
                 if out_uses > 0 {
                     self.emit(OpCode::DUP);
@@ -531,11 +537,11 @@ impl Builder {
                 key,
                 value,
             } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
                 self.emit_contract_map_composite_key(
                     ctx,
                     emitted_spills,
-                    cur_bb,
+                    current_block,
                     field,
                     key_ty,
                     *key,
@@ -564,7 +570,7 @@ impl Builder {
                 self.emit_contract_map_composite_key(
                     ctx,
                     emitted_spills,
-                    cur_bb,
+                    current_block,
                     field,
                     key_ty,
                     *key,
@@ -573,7 +579,7 @@ impl Builder {
                 self.emit_stloc(key_slot);
                 self.emit_syscall(Syscall::STORAGE_LOCAL_GET);
                 self.emit_convert_buffer_on_stack_to_type(val_ty)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
                 self.emit(Self::compound_assign_opcode(*op)?);
                 self.emit_stloc(val_slot);
                 self.emit_ldloc(key_slot);
@@ -596,7 +602,7 @@ impl Builder {
                 Ok(())
             }
             Instr::Abort { message } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *message)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *message)?;
                 self.emit(OpCode::ABORTMSG);
                 let out_uses = uses.get(&out).copied().unwrap_or(0);
                 if out_uses > 0 {
@@ -612,8 +618,8 @@ impl Builder {
                 Ok(())
             }
             Instr::Assert { cond, message } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *cond)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *message)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *cond)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *message)?;
                 self.emit(OpCode::ASSERTMSG);
                 let out_uses = uses.get(&out).copied().unwrap_or(0);
                 if out_uses > 0 {
@@ -630,7 +636,7 @@ impl Builder {
             }
             Instr::Emit { name, args } => {
                 for arg in args {
-                    self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *arg)?;
+                    self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *arg)?;
                 }
                 self.push_int(
                     args.len().try_into().map_err(|_| {
@@ -655,7 +661,7 @@ impl Builder {
             }
             Instr::PackageCall { name, args } => {
                 for arg in args.iter().rev() {
-                    self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *arg)?;
+                    self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *arg)?;
                 }
                 let index = self.emit_call_l_placeholder();
                 mux.call_patches.push((index, name.clone()));
@@ -678,9 +684,9 @@ impl Builder {
                 args,
             } => {
                 for arg in args.iter().rev() {
-                    self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *arg)?;
+                    self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *arg)?;
                 }
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *recv)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *recv)?;
                 let index = self.emit_call_l_placeholder();
                 mux.call_patches
                     .push((index, format!("{struct_name}::{method}")));
@@ -697,7 +703,7 @@ impl Builder {
                 Ok(())
             }
             Instr::RuntimeLog { message } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *message)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *message)?;
                 self.emit_syscall(Syscall::RUNTIME_LOG);
                 let out_uses = uses.get(&out).copied().unwrap_or(0);
                 if out_uses > 0 {
@@ -714,8 +720,8 @@ impl Builder {
             }
             Instr::RuntimeNotify { event_name, state } => {
                 // Syscall expects: eventName, state (Array)
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *state)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *event_name)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *state)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *event_name)?;
                 self.emit_syscall(Syscall::RUNTIME_NOTIFY);
                 let out_uses = uses.get(&out).copied().unwrap_or(0);
                 if out_uses > 0 {
@@ -737,10 +743,10 @@ impl Builder {
             } => {
                 // Stack order matches `codegen/expr.rs`:
                 // params, flags, method, contract, then syscall.
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *params)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *params)?;
                 self.push_int(i64::from(CallFlags::ReadOnly as u8));
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *method)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *contract)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *method)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *contract)?;
                 self.emit_syscall(Syscall::CONTRACT_CALL);
                 let out_uses = uses.get(&out).copied().unwrap_or(0);
                 if out_uses == 0 {
@@ -755,8 +761,8 @@ impl Builder {
                 Ok(())
             }
             Instr::ArrayAppend { array, value } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *array)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *value)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *array)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
                 self.emit(OpCode::APPEND);
                 // APPEND returns the array; keep/drop based on uses.
                 let out_uses = uses.get(&out).copied().unwrap_or(0);
@@ -772,7 +778,7 @@ impl Builder {
                 Ok(())
             }
             Instr::ArrayPop { array } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *array)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *array)?;
                 self.emit(OpCode::POPITEM);
                 let out_uses = uses.get(&out).copied().unwrap_or(0);
                 if out_uses == 0 {
@@ -787,7 +793,7 @@ impl Builder {
                 Ok(())
             }
             Instr::ClearItems { collection } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *collection)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *collection)?;
                 self.emit(OpCode::CLEARITEMS);
                 // CLEARITEMS leaves collection on stack.
                 let out_uses = uses.get(&out).copied().unwrap_or(0);
@@ -806,7 +812,7 @@ impl Builder {
                 self.emit_contract_map_composite_key(
                     ctx,
                     emitted_spills,
-                    cur_bb,
+                    current_block,
                     field,
                     key_ty,
                     *key,
@@ -826,8 +832,8 @@ impl Builder {
                 Ok(())
             }
             Instr::Remove { map, key } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *map)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, cur_bb, *key)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *map)?;
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *key)?;
                 self.emit(OpCode::REMOVE);
                 Ok(())
             }

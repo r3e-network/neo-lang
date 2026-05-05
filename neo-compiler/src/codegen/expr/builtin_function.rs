@@ -5,7 +5,11 @@ use crate::target::opcode::OpCode;
 use super::ExprGen;
 
 impl ExprGen<'_, '_> {
-    pub(super) fn compile_builtin_call(&mut self, name: &str, args: &[Expr]) -> Result<bool, CodegenError> {
+    pub(super) fn compile_builtin_call(
+        &mut self,
+        name: &str,
+        args: &[Expr],
+    ) -> Result<bool, CodegenError> {
         let err_call =
             |msg: &str| -> CodegenError { CodegenError::Unsupported(format!("`{name}` {msg}")) };
         match name {
@@ -48,4 +52,3 @@ impl ExprGen<'_, '_> {
         }
     }
 }
-
