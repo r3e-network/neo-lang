@@ -47,6 +47,95 @@ impl NativeContract {
     }
 }
 
+pub struct StdLib;
+
+impl StdLib {
+    pub fn serialize(source: NativeValue) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::StdLib.call("serialize").arg(source).build()
+    }
+
+    pub fn deserialize(source: NativeValue) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::StdLib
+            .call("deserialize")
+            .arg(source)
+            .build()
+    }
+
+    pub fn json_serialize(source: NativeValue) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::StdLib
+            .call("jsonSerialize")
+            .arg(source)
+            .build()
+    }
+
+    pub fn json_deserialize(
+        json: impl Into<String>,
+    ) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::StdLib
+            .call("jsonDeserialize")
+            .arg(NativeValue::String(json.into()))
+            .build()
+    }
+
+    pub fn base64_encode(input: NativeValue) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::StdLib
+            .call("base64Encode")
+            .arg(input)
+            .build()
+    }
+
+    pub fn base64_decode(input: impl Into<String>) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::StdLib
+            .call("base64Decode")
+            .arg(NativeValue::String(input.into()))
+            .build()
+    }
+
+    pub fn base58_encode(input: NativeValue) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::StdLib
+            .call("base58Encode")
+            .arg(input)
+            .build()
+    }
+
+    pub fn base58_decode(input: impl Into<String>) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::StdLib
+            .call("base58Decode")
+            .arg(NativeValue::String(input.into()))
+            .build()
+    }
+}
+
+pub struct CryptoLib;
+
+impl CryptoLib {
+    pub fn sha256(value: NativeValue) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::CryptoLib.call("sha256").arg(value).build()
+    }
+
+    pub fn ripemd160(value: NativeValue) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::CryptoLib
+            .call("ripemd160")
+            .arg(value)
+            .build()
+    }
+
+    pub fn verify_with_ecdsa(
+        message: NativeValue,
+        pub_key: NativeValue,
+        signature: NativeValue,
+        curve: impl Into<i128>,
+    ) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::CryptoLib
+            .call("verifyWithECDsa")
+            .arg(message)
+            .arg(pub_key)
+            .arg(signature)
+            .arg(NativeValue::integer(curve))
+            .build()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NativeValue {
     Null,

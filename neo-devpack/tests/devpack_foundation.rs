@@ -1,7 +1,7 @@
 use neo_devpack::analyzer::{Analyzer, FindingSeverity};
 use neo_devpack::api::{ApiCatalog, CallFlags};
 use neo_devpack::manifest::{ContractManifest, ManifestBuilder};
-use neo_devpack::native::{NativeContract, NativeValue};
+use neo_devpack::native::{CryptoLib, NativeContract, NativeValue, StdLib};
 use neo_devpack::standards::{standard_index, validate_standard, ContractShape, NepStandard};
 use neo_devpack::templates::{render_template, TemplateKind, TemplateOptions};
 use neo_devpack::testing::{DevPackTestContext, GasError};
@@ -104,6 +104,49 @@ fn native_contract_bindings_validate_arguments_and_surface_call_metadata() {
         .build()
         .unwrap_err();
     assert!(type_error.to_string().contains("expected `Hash160`"));
+}
+
+#[test]
+fn native_stdlib_and_cryptolib_helpers_build_typed_invocations() {
+    let serialized =
+        StdLib::serialize(NativeValue::String("hello".into())).expect("StdLib.serialize wrapper");
+    assert_eq!(serialized.contract.name, "StdLib");
+    assert_eq!(serialized.method.name, "serialize");
+    assert_eq!(serialized.method.return_type, NeoType::ByteArray);
+    assert_eq!(serialized.argument_types(), vec![NeoType::String]);
+
+    let decoded = StdLib::base64_decode("aGVsbG8=").expect("StdLib.base64Decode wrapper");
+    assert_eq!(decoded.method.name, "base64Decode");
+    assert_eq!(decoded.argument_types(), vec![NeoType::String]);
+
+    let message = NativeValue::byte_array("0xdeadbeef").expect("message bytes");
+    let hash = CryptoLib::sha256(message.clone()).expect("CryptoLib.sha256 wrapper");
+    assert_eq!(hash.contract.name, "CryptoLib");
+    assert_eq!(hash.method.name, "sha256");
+    assert_eq!(hash.method.return_type, NeoType::Hash256);
+
+    let pub_key = NativeValue::public_key(
+        "0x021111111111111111111111111111111111111111111111111111111111111111",
+    )
+    .expect("public key");
+    let signature_hex = format!("0x{}", "aa".repeat(64));
+    let signature = NativeValue::signature(&signature_hex).expect("signature");
+    let verified = CryptoLib::verify_with_ecdsa(message, pub_key, signature, 23)
+        .expect("CryptoLib.verifyWithECDsa wrapper");
+    assert_eq!(verified.method.name, "verifyWithECDsa");
+    assert_eq!(
+        verified.argument_types(),
+        vec![
+            NeoType::ByteArray,
+            NeoType::PublicKey,
+            NeoType::Signature,
+            NeoType::Integer,
+        ]
+    );
+
+    let bad_hash = CryptoLib::sha256(NativeValue::integer(1))
+        .expect_err("sha256 should enforce byte-array input");
+    assert!(bad_hash.to_string().contains("expected `ByteArray`"));
 }
 
 #[test]
