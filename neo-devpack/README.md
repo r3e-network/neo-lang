@@ -20,6 +20,7 @@ It is modeled after the responsibilities of `neo-project/neo-devpack-dotnet`, ad
 - Native contracts: ContractManagement, StdLib, CryptoLib, Ledger, NEO, GAS, Policy, RoleManagement, Oracle.
 - Typed native-contract invocation builders with arity/type validation.
 - `StdLib` and `CryptoLib` helper wrappers build typed native invocations for serialization, base encodings, hashing, and ECDSA verification.
+- `GasToken` and `NeoToken` helper wrappers build typed native invocations for balances, transfers, supply, and NEO governance calls.
 - `NativeValue::address` validates Neo N3 Base58Check addresses, version `0x35`, and checksums before converting to `Hash160`.
 - `NativeValue` constructors validate hash160, hash256, public key, signature, byte array, and buffer inputs before they reach native-call builders.
 - Standards index: NEP-11, NEP-17, NEP-24, NEP-26, NEP-27, NEP-29, NEP-30, NEP-31.
@@ -82,7 +83,7 @@ Unknown `neo-devpack/<module>` imports are rejected during type checking. Runtim
 
 ```rust
 use neo_devpack::api::ApiCatalog;
-use neo_devpack::native::{CryptoLib, NativeContract, NativeValue, StdLib};
+use neo_devpack::native::{CryptoLib, GasToken, NativeContract, NativeValue, StdLib};
 use neo_devpack::standards::{validate_standard, ContractShape, NepStandard};
 
 let catalog = ApiCatalog::neo_n3();
@@ -103,6 +104,14 @@ let transfer = NativeContract::Gas
     .arg(NativeValue::null())
     .build()?;
 assert_eq!(transfer.method.name, "transfer");
+
+let gas_transfer = GasToken::transfer(
+    NativeValue::address("NTRAJ9EEjHFHhHZvMKEKfkceg5V9ppx5ZP")?,
+    NativeValue::hash160("0x2222222222222222222222222222222222222222")?,
+    1,
+    NativeValue::null(),
+)?;
+assert_eq!(gas_transfer.method.name, "transfer");
 
 let digest = CryptoLib::sha256(NativeValue::byte_array("0xdeadbeef")?)?;
 assert_eq!(digest.method.name, "sha256");

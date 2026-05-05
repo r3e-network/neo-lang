@@ -136,6 +136,155 @@ impl CryptoLib {
     }
 }
 
+pub struct GasToken;
+
+impl GasToken {
+    pub fn symbol() -> Result<NativeInvocation, NativeBindingError> {
+        token_symbol(NativeContract::Gas)
+    }
+
+    pub fn decimals() -> Result<NativeInvocation, NativeBindingError> {
+        token_decimals(NativeContract::Gas)
+    }
+
+    pub fn total_supply() -> Result<NativeInvocation, NativeBindingError> {
+        token_total_supply(NativeContract::Gas)
+    }
+
+    pub fn balance_of(account: NativeValue) -> Result<NativeInvocation, NativeBindingError> {
+        token_balance_of(NativeContract::Gas, account)
+    }
+
+    pub fn transfer(
+        from: NativeValue,
+        to: NativeValue,
+        amount: impl Into<i128>,
+        data: NativeValue,
+    ) -> Result<NativeInvocation, NativeBindingError> {
+        token_transfer(NativeContract::Gas, from, to, amount, data)
+    }
+}
+
+pub struct NeoToken;
+
+impl NeoToken {
+    pub fn symbol() -> Result<NativeInvocation, NativeBindingError> {
+        token_symbol(NativeContract::Neo)
+    }
+
+    pub fn decimals() -> Result<NativeInvocation, NativeBindingError> {
+        token_decimals(NativeContract::Neo)
+    }
+
+    pub fn total_supply() -> Result<NativeInvocation, NativeBindingError> {
+        token_total_supply(NativeContract::Neo)
+    }
+
+    pub fn balance_of(account: NativeValue) -> Result<NativeInvocation, NativeBindingError> {
+        token_balance_of(NativeContract::Neo, account)
+    }
+
+    pub fn transfer(
+        from: NativeValue,
+        to: NativeValue,
+        amount: impl Into<i128>,
+        data: NativeValue,
+    ) -> Result<NativeInvocation, NativeBindingError> {
+        token_transfer(NativeContract::Neo, from, to, amount, data)
+    }
+
+    pub fn get_gas_per_block() -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Neo.call("getGasPerBlock").build()
+    }
+
+    pub fn unclaimed_gas(
+        account: NativeValue,
+        end: impl Into<i128>,
+    ) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Neo
+            .call("unclaimedGas")
+            .arg(account)
+            .arg(NativeValue::integer(end))
+            .build()
+    }
+
+    pub fn register_candidate(
+        pub_key: NativeValue,
+    ) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Neo
+            .call("registerCandidate")
+            .arg(pub_key)
+            .build()
+    }
+
+    pub fn unregister_candidate(
+        pub_key: NativeValue,
+    ) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Neo
+            .call("unRegisterCandidate")
+            .arg(pub_key)
+            .build()
+    }
+
+    pub fn vote(
+        account: NativeValue,
+        vote_to: NativeValue,
+    ) -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Neo
+            .call("vote")
+            .arg(account)
+            .arg(vote_to)
+            .build()
+    }
+
+    pub fn get_candidates() -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Neo.call("getCandidates").build()
+    }
+
+    pub fn get_committee() -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Neo.call("getCommittee").build()
+    }
+
+    pub fn get_next_block_validators() -> Result<NativeInvocation, NativeBindingError> {
+        NativeContract::Neo.call("getNextBlockValidators").build()
+    }
+}
+
+fn token_symbol(contract: NativeContract) -> Result<NativeInvocation, NativeBindingError> {
+    contract.call("symbol").build()
+}
+
+fn token_decimals(contract: NativeContract) -> Result<NativeInvocation, NativeBindingError> {
+    contract.call("decimals").build()
+}
+
+fn token_total_supply(contract: NativeContract) -> Result<NativeInvocation, NativeBindingError> {
+    contract.call("totalSupply").build()
+}
+
+fn token_balance_of(
+    contract: NativeContract,
+    account: NativeValue,
+) -> Result<NativeInvocation, NativeBindingError> {
+    contract.call("balanceOf").arg(account).build()
+}
+
+fn token_transfer(
+    contract: NativeContract,
+    from: NativeValue,
+    to: NativeValue,
+    amount: impl Into<i128>,
+    data: NativeValue,
+) -> Result<NativeInvocation, NativeBindingError> {
+    contract
+        .call("transfer")
+        .arg(from)
+        .arg(to)
+        .arg(NativeValue::integer(amount))
+        .arg(data)
+        .build()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NativeValue {
     Null,

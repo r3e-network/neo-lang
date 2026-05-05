@@ -294,3 +294,17 @@
 - [x] Add wrappers for CryptoLib SHA-256, RIPEMD-160, and ECDSA verification helpers.
 - [x] Keep wrapper calls routed through the existing native invocation builder so arity/type mismatches remain enforced.
 - [x] Document the pilot helpers in the devpack README and roadmap.
+
+### Task 22: NEO and GAS Native Token Wrappers
+
+**Files:**
+- Modify: `neo-devpack/src/native.rs`
+- Modify: `neo-devpack/tests/devpack_foundation.rs`
+- Modify: `neo-devpack/README.md`
+- Modify: `docs/superpowers/plans/2026-05-05-neo-n3-compiler-devpack-coverage.md`
+
+- [x] Add a red test for typed `GasToken` and `NeoToken` helper wrappers.
+- [x] Add common NEP-17 native token helpers for symbol, decimals, total supply, balance, and transfer.
+- [x] Add NEO governance helpers for gas-per-block, unclaimed gas, candidate registration, voting, committee, candidates, and next validators.
+- [x] Keep all wrappers routed through the catalog-backed native invocation builder.
+- [x] Document the NEO/GAS helpers in the devpack README and roadmap.

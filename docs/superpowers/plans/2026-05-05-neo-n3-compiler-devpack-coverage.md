@@ -39,6 +39,7 @@ Recently fixed in active PR work:
 - Devpack native-value constructors for validated hash256, public key, signature, byte array, and buffer values.
 - NEP-26/NEP-27 receiver callback ABI validation for contracts that declare token payment callback support.
 - StdLib/CryptoLib native wrapper pilot for typed serialization, base encoding, hashing, and ECDSA invocation helpers.
+- NEO/GAS native token wrappers for typed balance, transfer, supply, and governance invocation helpers.
 - README attribute mismatch for implemented attributes.
 
 ## Primary Gaps
@@ -175,7 +176,7 @@ Acceptance:
 
 1. Add runtime-oriented negative callback behavior coverage for NEP-17/NEP-11 receiver contracts.
 2. Typed Runtime/Contract/Storage devpack module design and first implementation.
-3. Extend typed native wrapper strategy from StdLib/CryptoLib to ContractManagement, Ledger, NEO, GAS, Policy, RoleManagement, and Oracle.
+3. Extend typed native wrapper strategy from StdLib/CryptoLib/NEO/GAS to ContractManagement, Ledger, Policy, RoleManagement, and Oracle.
 4. Golden NEF/manifest snapshots and debug artifact planning.
 5. VM execution harness spike for compiled scripts.
 

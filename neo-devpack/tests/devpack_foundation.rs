@@ -1,7 +1,7 @@
 use neo_devpack::analyzer::{Analyzer, FindingSeverity};
 use neo_devpack::api::{ApiCatalog, CallFlags};
 use neo_devpack::manifest::{ContractManifest, ManifestBuilder};
-use neo_devpack::native::{CryptoLib, NativeContract, NativeValue, StdLib};
+use neo_devpack::native::{CryptoLib, GasToken, NativeContract, NativeValue, NeoToken, StdLib};
 use neo_devpack::standards::{standard_index, validate_standard, ContractShape, NepStandard};
 use neo_devpack::templates::{render_template, TemplateKind, TemplateOptions};
 use neo_devpack::testing::{DevPackTestContext, GasError};
@@ -147,6 +147,57 @@ fn native_stdlib_and_cryptolib_helpers_build_typed_invocations() {
     let bad_hash = CryptoLib::sha256(NativeValue::integer(1))
         .expect_err("sha256 should enforce byte-array input");
     assert!(bad_hash.to_string().contains("expected `ByteArray`"));
+}
+
+#[test]
+fn native_neo_and_gas_helpers_build_typed_invocations() {
+    let alice = NativeValue::address("NTRAJ9EEjHFHhHZvMKEKfkceg5V9ppx5ZP").expect("address");
+    let bob = NativeValue::hash160("0x2222222222222222222222222222222222222222").expect("hash160");
+
+    let transfer = GasToken::transfer(alice.clone(), bob.clone(), 42, NativeValue::null())
+        .expect("GAS transfer wrapper");
+    assert_eq!(transfer.contract.name, "GAS");
+    assert_eq!(transfer.method.name, "transfer");
+    assert_eq!(transfer.method.return_type, NeoType::Boolean);
+    assert_eq!(
+        transfer.argument_types(),
+        vec![
+            NeoType::Hash160,
+            NeoType::Hash160,
+            NeoType::Integer,
+            NeoType::Any,
+        ]
+    );
+
+    let balance = GasToken::balance_of(alice.clone()).expect("GAS balanceOf wrapper");
+    assert!(balance.method.safe);
+    assert_eq!(balance.method.name, "balanceOf");
+
+    let supply = NeoToken::total_supply().expect("NEO totalSupply wrapper");
+    assert_eq!(supply.contract.name, "NEO");
+    assert_eq!(supply.method.return_type, NeoType::Integer);
+
+    let unclaimed = NeoToken::unclaimed_gas(alice.clone(), 123).expect("NEO unclaimedGas wrapper");
+    assert_eq!(unclaimed.method.name, "unclaimedGas");
+    assert_eq!(
+        unclaimed.argument_types(),
+        vec![NeoType::Hash160, NeoType::Integer]
+    );
+
+    let vote_to = NativeValue::public_key(
+        "0x021111111111111111111111111111111111111111111111111111111111111111",
+    )
+    .expect("public key");
+    let vote = NeoToken::vote(alice, vote_to).expect("NEO vote wrapper");
+    assert_eq!(vote.method.name, "vote");
+    assert_eq!(
+        vote.argument_types(),
+        vec![NeoType::Hash160, NeoType::PublicKey]
+    );
+
+    let bad_transfer = GasToken::transfer(NativeValue::integer(1), bob, 1, NativeValue::null())
+        .expect_err("transfer wrapper should keep hash160 type validation");
+    assert!(bad_transfer.to_string().contains("expected `Hash160`"));
 }
 
 #[test]
