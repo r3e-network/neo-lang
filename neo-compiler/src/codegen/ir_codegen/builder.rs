@@ -4,13 +4,36 @@ use crate::codegen::expr::{get_operand_for_type, parse_int_literal};
 use crate::codegen::CodegenError;
 use crate::ir::*;
 use crate::syntax::ast::{AssignOp, BinaryOp, Literal, Type, UnaryOp};
+use crate::target::builtin::{BuiltinEmitStep, BuiltinMethod};
 use crate::target::opcode::{OpCode, ToOpCode};
-use crate::target::syscall::{CallFlags, Syscall};
+use crate::target::syscall::{RuntimeEmitStep, Syscall};
 use crate::target::{Builder, StackItemType};
 
 use super::{IrSideEffectMux, IrStackifyContext};
 
 impl Builder {
+    fn emit_builtin_emit_plan(
+        &mut self,
+        ctx: &IrStackifyContext<'_>,
+        emitted_spills: &mut HashSet<ValueId>,
+        current_block: BlockId,
+        builtin: BuiltinMethod,
+        args: &[ValueRef],
+    ) -> Result<(), CodegenError> {
+        for step in builtin.emit_plan() {
+            match step {
+                BuiltinEmitStep::SourceArg(index) => self.emit_value_ref_stackified(
+                    ctx,
+                    emitted_spills,
+                    current_block,
+                    args[*index],
+                )?,
+                BuiltinEmitStep::Op(opcode) => self.emit(*opcode),
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn emit_jump_args_stackified(
         &mut self,
         ctx: &IrStackifyContext<'_>,
@@ -433,16 +456,8 @@ impl Builder {
                 self.emit_with_operands(OpCode::CONVERT, std::slice::from_ref(&op));
                 Ok(())
             }
-            Instr::Min { left, right } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *left)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *right)?;
-                self.emit(OpCode::MIN);
-                Ok(())
-            }
-            Instr::Max { left, right } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *left)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *right)?;
-                self.emit(OpCode::MAX);
+            Instr::BuiltinCall { builtin, args } => {
+                self.emit_builtin_emit_plan(ctx, emitted_spills, current_block, *builtin, args)?;
                 Ok(())
             }
             _ => Err(CodegenError::Unsupported(
@@ -601,11 +616,14 @@ impl Builder {
                 }
                 Ok(())
             }
-            Instr::Abort { message } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *message)?;
-                self.emit(OpCode::ABORTMSG);
+            Instr::BuiltinCall { builtin, args } => {
+                self.emit_builtin_emit_plan(ctx, emitted_spills, current_block, *builtin, args)?;
                 let out_uses = uses.get(&out).copied().unwrap_or(0);
-                if out_uses > 0 {
+                if out_uses == 0 {
+                    if builtin.leaves_stack_value() {
+                        self.emit(OpCode::DROP);
+                    }
+                } else if !builtin.leaves_stack_value() {
                     self.push_null();
                     if spill.contains(&out) {
                         let slot = *value_slot
@@ -614,23 +632,12 @@ impl Builder {
                         self.emit_stloc(slot);
                         emitted_spills.insert(out);
                     }
-                }
-                Ok(())
-            }
-            Instr::Assert { cond, message } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *cond)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *message)?;
-                self.emit(OpCode::ASSERTMSG);
-                let out_uses = uses.get(&out).copied().unwrap_or(0);
-                if out_uses > 0 {
-                    self.push_null();
-                    if spill.contains(&out) {
-                        let slot = *value_slot
-                            .get(&out)
-                            .ok_or(CodegenError::LocalLimitExceeded)?;
-                        self.emit_stloc(slot);
-                        emitted_spills.insert(out);
-                    }
+                } else if spill.contains(&out) {
+                    let slot = *value_slot
+                        .get(&out)
+                        .ok_or(CodegenError::LocalLimitExceeded)?;
+                    self.emit_stloc(slot);
+                    emitted_spills.insert(out);
                 }
                 Ok(())
             }
@@ -677,6 +684,29 @@ impl Builder {
                 }
                 Ok(())
             }
+            Instr::ContractMethodCall {
+                contract_name,
+                method,
+                args,
+            } => {
+                for arg in args.iter().rev() {
+                    self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *arg)?;
+                }
+                let index = self.emit_call_l_placeholder();
+                mux.call_patches
+                    .push((index, format!("{contract_name}::{method}")));
+                let out_uses = uses.get(&out).copied().unwrap_or(0);
+                if out_uses == 0 {
+                    self.emit(OpCode::DROP);
+                } else if spill.contains(&out) {
+                    let slot = *value_slot
+                        .get(&out)
+                        .ok_or(CodegenError::LocalLimitExceeded)?;
+                    self.emit_stloc(slot);
+                    emitted_spills.insert(out);
+                }
+                Ok(())
+            }
             Instr::StructCall {
                 struct_name,
                 method,
@@ -702,55 +732,33 @@ impl Builder {
                 }
                 Ok(())
             }
-            Instr::RuntimeLog { message } => {
-                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *message)?;
-                self.emit_syscall(Syscall::RUNTIME_LOG);
-                let out_uses = uses.get(&out).copied().unwrap_or(0);
-                if out_uses > 0 {
-                    self.push_null();
-                    if spill.contains(&out) {
-                        let slot = *value_slot
-                            .get(&out)
-                            .ok_or(CodegenError::LocalLimitExceeded)?;
-                        self.emit_stloc(slot);
-                        emitted_spills.insert(out);
+            Instr::RuntimeCall { method, args } => {
+                for step in method.emit_steps() {
+                    match step {
+                        RuntimeEmitStep::SourceArg(index) => self.emit_value_ref_stackified(
+                            ctx,
+                            emitted_spills,
+                            current_block,
+                            args[index],
+                        )?,
+                        RuntimeEmitStep::InjectedInt(value) => self.push_int(value),
+                        RuntimeEmitStep::Syscall(syscall) => self.emit_syscall(syscall),
                     }
                 }
-                Ok(())
-            }
-            Instr::RuntimeNotify { event_name, state } => {
-                // Syscall expects: eventName, state (Array)
-                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *state)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *event_name)?;
-                self.emit_syscall(Syscall::RUNTIME_NOTIFY);
-                let out_uses = uses.get(&out).copied().unwrap_or(0);
-                if out_uses > 0 {
-                    self.push_null();
-                    if spill.contains(&out) {
-                        let slot = *value_slot
-                            .get(&out)
-                            .ok_or(CodegenError::LocalLimitExceeded)?;
-                        self.emit_stloc(slot);
-                        emitted_spills.insert(out);
-                    }
-                }
-                Ok(())
-            }
-            Instr::ContractCallReadOnly {
-                contract,
-                method,
-                params,
-            } => {
-                // Stack order matches `codegen/expr.rs`:
-                // params, flags, method, contract, then syscall.
-                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *params)?;
-                self.push_int(i64::from(CallFlags::ReadOnly as u8));
-                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *method)?;
-                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *contract)?;
-                self.emit_syscall(Syscall::CONTRACT_CALL);
                 let out_uses = uses.get(&out).copied().unwrap_or(0);
                 if out_uses == 0 {
-                    self.emit(OpCode::DROP);
+                    if method.leaves_stack_value() {
+                        self.emit(OpCode::DROP);
+                    }
+                } else if !method.leaves_stack_value() {
+                    self.push_null();
+                    if spill.contains(&out) {
+                        let slot = *value_slot
+                            .get(&out)
+                            .ok_or(CodegenError::LocalLimitExceeded)?;
+                        self.emit_stloc(slot);
+                        emitted_spills.insert(out);
+                    }
                 } else if spill.contains(&out) {
                     let slot = *value_slot
                         .get(&out)

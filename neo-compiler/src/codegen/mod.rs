@@ -51,6 +51,7 @@
 //! (e.g. `System.Storage.Local.Put(key, value)` has `| value | key |` before `SYSCALL`).
 //!
 
+pub mod context;
 pub mod env;
 pub mod expr;
 pub mod function;
@@ -62,6 +63,7 @@ mod tests;
 
 use std::collections::HashMap;
 
+use crate::codegen::context::{FnSig, FunctionCompileContext};
 use crate::codegen::function::{compile_function, lower_struct_method};
 use crate::codegen::opt::Optimizer;
 use crate::syntax::ast::*;
@@ -245,11 +247,11 @@ impl Codegen {
             .map(get_contract_fields)
             .unwrap_or_default();
 
-        let storage_fields = (!contract_fields.is_empty()).then_some(contract_fields.as_slice());
-        let mut package_fn_arity = HashMap::new();
+        let storage_fields = contract_fields.as_slice();
+        let mut package_fns = HashMap::new();
         for func in &source.functions {
-            if package_fn_arity
-                .insert(func.name.clone(), func.params.len())
+            if package_fns
+                .insert(func.name.clone(), FnSig::from_function(func))
                 .is_some()
             {
                 return Err(CodegenError::Unsupported(format!(
@@ -259,9 +261,10 @@ impl Codegen {
             }
         }
 
+        let package_ctx = FunctionCompileContext::new(&source.structs, &package_fns);
         let mut package_functions = Vec::with_capacity(source.functions.len());
         for func in &source.functions {
-            let compiled = compile_function(func, &source.structs, None, &package_fn_arity)?;
+            let compiled = compile_function(func, &package_ctx)?;
             package_functions.push(CompiledFunction {
                 name: func.name.clone(),
                 contract: None,
@@ -274,8 +277,7 @@ impl Codegen {
         for struct_decl in &source.structs {
             for method in &struct_decl.methods {
                 let lowered = lower_struct_method(&struct_decl.name, method);
-                let compiled =
-                    compile_function(&lowered, &source.structs, None, &package_fn_arity)?;
+                let compiled = compile_function(&lowered, &package_ctx)?;
                 struct_methods.push(CompiledFunction {
                     name: lowered.name.clone(),
                     contract: None,
@@ -287,14 +289,29 @@ impl Codegen {
 
         let mut contract_methods = Vec::new();
         if let Some(contract_decl) = &source.contract {
+            let mut contract_fns = HashMap::new();
             for member in &contract_decl.members {
                 if let ContractMember::Function(method) = member {
-                    let compiled = compile_function(
-                        method,
-                        &source.structs,
-                        storage_fields,
-                        &package_fn_arity,
-                    )?;
+                    if contract_fns
+                        .insert(method.name.clone(), FnSig::from_function(method))
+                        .is_some()
+                    {
+                        return Err(CodegenError::Unsupported(format!(
+                            "duplicate contract method `{}`",
+                            method.name
+                        )));
+                    }
+                }
+            }
+            let contract_ctx = FunctionCompileContext::new(&source.structs, &package_fns)
+                .with_contract(
+                    contract_decl.name.as_str(),
+                    storage_fields,
+                    &contract_fns,
+                );
+            for member in &contract_decl.members {
+                if let ContractMember::Function(method) = member {
+                    let compiled = compile_function(method, &contract_ctx)?;
                     contract_methods.push(CompiledFunction {
                         name: method.name.clone(),
                         contract: Some(contract_decl.name.clone()),

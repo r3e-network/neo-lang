@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::codegen::CodegenError;
 use crate::ir::*;
+use crate::syntax::ast::Type;
 use crate::target::opcode::OpCode;
 use crate::target::Builder;
 
@@ -19,6 +20,7 @@ impl FunctionIr {
         &self,
         plan: &StackifyPlan,
         arg_count: u8,
+        _return_ty: &Type,
         builder: &mut Builder,
     ) -> Result<IrBlocks, CodegenError> {
         let mut call_patches: Vec<(usize, String)> = Vec::new();
@@ -130,7 +132,7 @@ impl FunctionIr {
                             *block_id,
                             *value,
                         )?;
-                    } // no stack item if no return value
+                    }
                     builder.emit(OpCode::RET);
                 }
                 Terminator::Jump { target, args } => {

@@ -503,13 +503,13 @@ impl Parser {
             }
         }
         let mut expr = self.parse_primary()?;
+        expr = self.parse_postfix_chain(expr)?;
         for unary in unaries.into_iter().rev() {
             expr = Expr::Unary {
                 op: unary,
                 expr: Box::new(expr),
             };
         }
-        expr = self.parse_postfix_chain(expr)?;
         while matches!(self.current(), Token::As) {
             self.bump();
             let ty = self.parse_type()?;

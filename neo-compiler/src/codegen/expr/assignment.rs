@@ -90,10 +90,7 @@ impl ExprGen<'_, '_> {
                 Ok(())
             }
             Expr::Member { base, field } if matches!(base.as_ref(), Expr::Self_) => {
-                if self
-                    .contract_fields
-                    .is_some_and(|fs| fs.iter().any(|f| f.name == *field))
-                {
+                if self.contract_fields.iter().any(|cf| cf.name == *field) {
                     return self.compile_contract_member_load(field);
                 }
                 let struct_name = self.value_struct.get("self").cloned().ok_or_else(|| {
@@ -115,10 +112,7 @@ impl ExprGen<'_, '_> {
     fn store_assign_target(&mut self, target: &Expr) -> Result<(), CodegenError> {
         match target {
             Expr::Member { base, field } if matches!(base.as_ref(), Expr::Self_) => {
-                if self
-                    .contract_fields
-                    .is_some_and(|fs| fs.iter().any(|f| f.name == *field))
-                {
+                if self.contract_fields.iter().any(|cf| cf.name == *field) {
                     let contract_field = self.contract_field_required(field)?;
                     let ty = contract_field.ty.clone();
                     if ty.is_map() {

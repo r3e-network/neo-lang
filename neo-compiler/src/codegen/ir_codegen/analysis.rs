@@ -85,11 +85,11 @@ impl Instr {
                 bump(*right, out);
             }
             Instr::Cast { value, .. } => bump(*value, out),
-            Instr::Min { left, right } | Instr::Max { left, right } => {
-                bump(*left, out);
-                bump(*right, out);
+            Instr::BuiltinCall { args, .. } => {
+                for arg in args {
+                    bump(*arg, out);
+                }
             }
-            Instr::Abort { message } => bump(*message, out),
             Instr::ContractStorageGet { .. } => {}
             Instr::ContractStoragePut { value, .. } => bump(*value, out),
             Instr::ContractMapStorageGet { key, .. } => bump(*key, out),
@@ -103,16 +103,17 @@ impl Instr {
                 bump(*key, out);
                 bump(*value, out);
             }
-            Instr::Assert { cond, message } => {
-                bump(*cond, out);
-                bump(*message, out);
-            }
             Instr::Emit { args, .. } => {
                 for arg in args {
                     bump(*arg, out);
                 }
             }
             Instr::PackageCall { args, .. } => {
+                for arg in args {
+                    bump(*arg, out);
+                }
+            }
+            Instr::ContractMethodCall { args, .. } => {
                 for arg in args {
                     bump(*arg, out);
                 }
@@ -128,19 +129,10 @@ impl Instr {
                     bump(*arg, out);
                 }
             }
-            Instr::RuntimeLog { message } => bump(*message, out),
-            Instr::RuntimeNotify { event_name, state } => {
-                bump(*event_name, out);
-                bump(*state, out);
-            }
-            Instr::ContractCallReadOnly {
-                contract,
-                method,
-                params,
-            } => {
-                bump(*contract, out);
-                bump(*method, out);
-                bump(*params, out);
+            Instr::RuntimeCall { args, .. } => {
+                for arg in args {
+                    bump(*arg, out);
+                }
             }
             Instr::ArrayPack { elements } => {
                 for value in elements {
@@ -250,11 +242,11 @@ impl Instr {
                 bump(use_bb, *right, def_block, out);
             }
             Instr::Cast { value, .. } => bump(use_bb, *value, def_block, out),
-            Instr::Min { left, right } | Instr::Max { left, right } => {
-                bump(use_bb, *left, def_block, out);
-                bump(use_bb, *right, def_block, out);
+            Instr::BuiltinCall { args, .. } => {
+                for arg in args {
+                    bump(use_bb, *arg, def_block, out);
+                }
             }
-            Instr::Abort { message } => bump(use_bb, *message, def_block, out),
             Instr::ContractStorageGet { .. } => {}
             Instr::ContractStoragePut { value, .. } => bump(use_bb, *value, def_block, out),
             Instr::ContractMapStorageGet { key, .. } => bump(use_bb, *key, def_block, out),
@@ -268,16 +260,17 @@ impl Instr {
                 bump(use_bb, *key, def_block, out);
                 bump(use_bb, *value, def_block, out);
             }
-            Instr::Assert { cond, message } => {
-                bump(use_bb, *cond, def_block, out);
-                bump(use_bb, *message, def_block, out);
-            }
             Instr::Emit { args, .. } => {
                 for arg in args {
                     bump(use_bb, *arg, def_block, out);
                 }
             }
             Instr::PackageCall { args, .. } => {
+                for arg in args {
+                    bump(use_bb, *arg, def_block, out);
+                }
+            }
+            Instr::ContractMethodCall { args, .. } => {
                 for arg in args {
                     bump(use_bb, *arg, def_block, out);
                 }
@@ -293,19 +286,10 @@ impl Instr {
                     bump(use_bb, *arg, def_block, out);
                 }
             }
-            Instr::RuntimeLog { message } => bump(use_bb, *message, def_block, out),
-            Instr::RuntimeNotify { event_name, state } => {
-                bump(use_bb, *event_name, def_block, out);
-                bump(use_bb, *state, def_block, out);
-            }
-            Instr::ContractCallReadOnly {
-                contract,
-                method,
-                params,
-            } => {
-                bump(use_bb, *contract, def_block, out);
-                bump(use_bb, *method, def_block, out);
-                bump(use_bb, *params, def_block, out);
+            Instr::RuntimeCall { args, .. } => {
+                for arg in args {
+                    bump(use_bb, *arg, def_block, out);
+                }
             }
             Instr::ArrayPack { elements } => {
                 for value in elements {

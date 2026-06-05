@@ -101,8 +101,7 @@ impl ExprGen<'_, '_> {
         if !matches!(inner.as_ref(), Expr::Self_) {
             return None;
         }
-        let fields = self.contract_fields.as_ref()?;
-        let cf = fields.iter().find(|f| f.name == *fname)?;
+        let cf = self.contract_fields.iter().find(|cf| cf.name == *fname)?;
         let Type::Map { key, value } = &cf.ty else {
             return None;
         };

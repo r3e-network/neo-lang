@@ -9,6 +9,8 @@ pub mod opt;
 use std::collections::BTreeMap;
 
 use crate::syntax::ast::*;
+use crate::target::builtin::BuiltinMethod;
+use crate::target::syscall::RuntimeMethod;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockId(pub usize);
@@ -186,24 +188,10 @@ pub enum Instr {
         key_ty: Type,
         key: ValueRef,
     },
-    /// `assert(cond, message)` (`ASSERTMSG`).
-    Assert {
-        cond: ValueRef,
-        message: ValueRef,
-    },
-    /// `abort(message)` (`ABORTMSG`).
-    Abort {
-        message: ValueRef,
-    },
-    /// `min(a, b)` (`MIN`).
-    Min {
-        left: ValueRef,
-        right: ValueRef,
-    },
-    /// `max(a, b)` (`MAX`).
-    Max {
-        left: ValueRef,
-        right: ValueRef,
+    /// Built-in call (`assert`, `abort`, `min`, `max`, ...) lowered from [`BuiltinMethod`] metadata.
+    BuiltinCall {
+        builtin: BuiltinMethod,
+        args: Vec<ValueRef>,
     },
     /// `emit name(args...)`.
     Emit {
@@ -213,6 +201,12 @@ pub enum Instr {
     /// Top-level package function `name(args...)` → `CALL_L`.
     PackageCall {
         name: String,
+        args: Vec<ValueRef>,
+    },
+    /// `self.method(args...)` within the same contract → `CALL_L` to `Contract::method` (no `self` arg).
+    ContractMethodCall {
+        contract_name: String,
+        method: String,
         args: Vec<ValueRef>,
     },
     /// Struct literal `S { ... }` as NeoVM `PACK`.
@@ -227,20 +221,10 @@ pub enum Instr {
         recv: ValueRef,
         args: Vec<ValueRef>,
     },
-    /// `runtime.log(message)`.
-    RuntimeLog {
-        message: ValueRef,
-    },
-    /// `runtime.notify(event_name, state_array)` (Syscall `System.Runtime.Notify`).
-    RuntimeNotify {
-        event_name: ValueRef,
-        state: ValueRef,
-    },
-    /// `runtime.contractCall(contract, method, params)` with injected read-only flags.
-    ContractCallReadOnly {
-        contract: ValueRef,
-        method: ValueRef,
-        params: ValueRef,
+    /// `runtime.<method>(args...)` lowered from syscall metadata ([`RuntimeMethod`]).
+    RuntimeCall {
+        method: RuntimeMethod,
+        args: Vec<ValueRef>,
     },
     /// Array literal `[...]` as NeoVM `PACK`.
     ArrayPack {
@@ -256,28 +240,26 @@ pub enum Instr {
 
 impl Instr {
     pub(crate) fn has_side_effects(&self) -> bool {
-        matches!(
-            self,
+        match self {
+            Instr::BuiltinCall { builtin, .. } => builtin.has_side_effects(),
             Instr::IndexSet { .. }
-                | Instr::StructFieldSet { .. }
-                | Instr::ArrayAppend { .. }
-                | Instr::ArrayPop { .. }
-                | Instr::ClearItems { .. }
-                | Instr::Remove { .. }
-                | Instr::ContractStoragePut { .. }
-                | Instr::ContractMapStoragePut { .. }
-                | Instr::ContractMapStorageCompound { .. }
-                | Instr::ContractMapStorageRemove { .. }
-                | Instr::Assert { .. }
-                | Instr::Abort { .. }
-                | Instr::Emit { .. }
-                | Instr::PackageCall { .. }
-                | Instr::StructCall { .. }
-                | Instr::RuntimeLog { .. }
-                | Instr::RuntimeNotify { .. }
-                | Instr::ContractCallReadOnly { .. }
-                | Instr::EvalAst(_)
-        )
+            | Instr::StructFieldSet { .. }
+            | Instr::ArrayAppend { .. }
+            | Instr::ArrayPop { .. }
+            | Instr::ClearItems { .. }
+            | Instr::Remove { .. }
+            | Instr::ContractStoragePut { .. }
+            | Instr::ContractMapStoragePut { .. }
+            | Instr::ContractMapStorageCompound { .. }
+            | Instr::ContractMapStorageRemove { .. }
+            | Instr::Emit { .. }
+            | Instr::PackageCall { .. }
+            | Instr::ContractMethodCall { .. }
+            | Instr::StructCall { .. }
+            | Instr::RuntimeCall { .. }
+            | Instr::EvalAst(_) => true,
+            _ => false,
+        }
     }
 
     /// Whether this instruction must be preserved even if its output value is unused.
@@ -286,30 +268,27 @@ impl Instr {
     /// instructions may be observable (e.g. runtime/storage behavior) or required for
     /// correctness even when their result is not consumed.
     pub(crate) fn must_keep_even_if_unused(&self) -> bool {
-        matches!(
-            self,
+        match self {
+            Instr::BuiltinCall { builtin, .. } => builtin.has_side_effects(),
             Instr::EvalAst(_)
-                | Instr::IndexSet { .. }
-                | Instr::StructFieldSet { .. }
-                | Instr::ArrayAppend { .. }
-                | Instr::ArrayPop { .. }
-                | Instr::ClearItems { .. }
-                | Instr::Remove { .. }
-                | Instr::ContractStoragePut { .. }
-                | Instr::ContractMapStoragePut { .. }
-                | Instr::ContractMapStorageCompound { .. }
-                | Instr::ContractMapStorageRemove { .. }
-                | Instr::Assert { .. }
-                | Instr::Abort { .. }
-                | Instr::Emit { .. }
-                | Instr::PackageCall { .. }
-                | Instr::StructPack { .. }
-                | Instr::StructCall { .. }
-                | Instr::RuntimeLog { .. }
-                | Instr::RuntimeNotify { .. }
-                | Instr::ContractCallReadOnly { .. } // | Instr::ArrayPack { .. }
-                                                     // | Instr::MapPack { .. }
-        )
+            | Instr::IndexSet { .. }
+            | Instr::StructFieldSet { .. }
+            | Instr::ArrayAppend { .. }
+            | Instr::ArrayPop { .. }
+            | Instr::ClearItems { .. }
+            | Instr::Remove { .. }
+            | Instr::ContractStoragePut { .. }
+            | Instr::ContractMapStoragePut { .. }
+            | Instr::ContractMapStorageCompound { .. }
+            | Instr::ContractMapStorageRemove { .. }
+            | Instr::Emit { .. }
+            | Instr::PackageCall { .. }
+            | Instr::ContractMethodCall { .. }
+            | Instr::StructPack { .. }
+            | Instr::StructCall { .. }
+            | Instr::RuntimeCall { .. } => true,
+            _ => false,
+        }
     }
 }
 

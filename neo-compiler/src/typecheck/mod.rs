@@ -10,7 +10,8 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 use crate::syntax::ast::*;
-use crate::target::syscall::runtime_syscall_for_method;
+use crate::target::builtin::BuiltinMethod;
+use crate::target::syscall::{neo_type_satisfies_stack_item, RuntimeMethod};
 use crate::target::StackItemType;
 
 #[derive(Debug, Error)]
@@ -74,11 +75,26 @@ impl SourceFile {
         }
 
         let contract_fields = contract_field_storage.as_slice();
+        let contract_fns: HashMap<String, &FunctionDecl> = self
+            .contract
+            .as_ref()
+            .map(|contract_decl| {
+                contract_decl
+                    .members
+                    .iter()
+                    .filter_map(|member| match member {
+                        ContractMember::Function(func) => Some((func.name.clone(), func)),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         let ctx = TypeCheckContext {
             structs: &structs,
             package_fns: &package_fns,
             events: &events,
             contract_fields,
+            contract_fns: &contract_fns,
         };
 
         self.check_source_file_map_types()?;
@@ -161,6 +177,7 @@ struct TypeCheckContext<'a> {
     package_fns: &'a HashMap<String, &'a FunctionDecl>,
     events: &'a HashMap<String, &'a EventDecl>,
     contract_fields: &'a [ContractField],
+    contract_fns: &'a HashMap<String, &'a FunctionDecl>,
 }
 
 enum FnType {
@@ -236,36 +253,7 @@ fn check_map_key_rules_in_type(ty: &Type) -> Result<(), TypeError> {
 }
 
 fn satisfies_stack_item(ty: &Type, sit: StackItemType) -> bool {
-    match sit {
-        StackItemType::Boolean => matches!(ty, Type::Bool),
-        StackItemType::Integer => matches!(ty, Type::Int),
-        StackItemType::ByteString => matches!(ty, Type::String | Type::Hash160 | Type::Hash256),
-        // Source often passes string literals where syscall metadata says `Buffer` (e.g. `runtime.log`).
-        StackItemType::Buffer => matches!(ty, Type::Buffer | Type::String),
-        StackItemType::Array => matches!(ty, Type::Array(_) | Type::Any),
-        StackItemType::Map => matches!(ty, Type::Map { .. } | Type::Any),
-        StackItemType::Any => true,
-        StackItemType::Pointer | StackItemType::InteropInterface => false,
-    }
-}
-
-fn syscall_return_type(syscall: &crate::target::syscall::Syscall) -> Type {
-    let Some(return_ty) = syscall.return_type else {
-        return Type::Void;
-    };
-    match return_ty {
-        StackItemType::Boolean => Type::Bool,
-        StackItemType::Integer => Type::Int,
-        StackItemType::ByteString => Type::String,
-        StackItemType::Buffer => Type::Buffer,
-        StackItemType::Array => Type::Array(Box::new(Type::Any)),
-        StackItemType::Map => Type::Map {
-            key: Box::new(Type::Any),
-            value: Box::new(Type::Any),
-        },
-        StackItemType::Any => Type::Any,
-        StackItemType::Pointer | StackItemType::InteropInterface => Type::Any,
-    }
+    neo_type_satisfies_stack_item(ty, sit)
 }
 
 impl<'a> TypeCheckContext<'a> {
@@ -454,7 +442,7 @@ impl<'a> TypeCheckContext<'a> {
                 .resolve(name)
                 .ok_or_else(|| err(format!("unknown variable or parameter `{name}`"))),
             Expr::Self_ => Err(err(
-                "`self` cannot stand alone; use `self.field` or pass as receiver",
+                "`self` cannot stand alone; use `self.field` or `self.method(...)` instead",
             )),
             Expr::Cast { expr: inner, ty } => {
                 self.infer_expr(env, inner)?;
@@ -886,12 +874,44 @@ impl<'a> TypeCheckContext<'a> {
         }
     }
 
+    fn check_contract_method_call(
+        &self,
+        env: &mut FnEnv,
+        method: &str,
+        args: &[Expr],
+    ) -> Result<Type, TypeError> {
+        let method_decl = self
+            .contract_fns
+            .get(method)
+            .ok_or_else(|| err(format!("contract has no method `{method}`")))?;
+        if args.len() != method_decl.params.len() {
+            return Err(err(format!(
+                "`self.{method}` expects {} argument(s), got {}",
+                method_decl.params.len(),
+                args.len()
+            )));
+        }
+        for (expr, param) in args.iter().zip(&method_decl.params) {
+            let ty = self.infer_expr(env, expr)?;
+            if !ty.can_assign_to(&param.ty) {
+                return Err(err(format!(
+                    "argument `{}` to `self.{method}` type mismatch: expected `{:?}`, got `{ty:?}`",
+                    param.name, param.ty
+                )));
+            }
+        }
+        Ok(method_decl.return_ty.clone())
+    }
+
     fn check_call(&self, env: &mut FnEnv, callee: &Expr, args: &[Expr]) -> Result<Type, TypeError> {
         if let Expr::Member { base, field } = callee {
             if let Expr::Ident(pkg) = base.as_ref() {
                 if pkg == "runtime" {
                     return self.check_runtime_call(field, args, env);
                 }
+            }
+            if matches!(base.as_ref(), Expr::Self_) && env.is_contract_fn {
+                return self.check_contract_method_call(env, field, args);
             }
             if let Some(ty) = self.check_builtin_method_call(env, base.as_ref(), field, args)? {
                 return Ok(ty);
@@ -1160,50 +1180,26 @@ impl<'a> TypeCheckContext<'a> {
         name: &str,
         args: &[Expr],
     ) -> Result<Option<Type>, TypeError> {
-        match name {
-            "assert" => {
-                if args.len() != 2 {
-                    return Err(err("`assert` expects 2 arguments"));
-                }
-                let t0 = self.infer_expr(env, &args[0])?;
-                let t1 = self.infer_expr(env, &args[1])?;
-                if t0 != Type::Bool {
-                    return Err(err(format!(
-                        "`assert` first argument must be bool, got `{t0:?}`"
-                    )));
-                }
-                if t1 != Type::String {
-                    return Err(err(format!(
-                        "`assert` second argument must be string, got `{t1:?}`"
-                    )));
-                }
-                return Ok(Some(Type::Void));
-            }
-            "abort" => {
-                if args.len() != 1 {
-                    return Err(err("`abort` expects 1 argument"));
-                }
-                let t0 = self.infer_expr(env, &args[0])?;
-                if t0 != Type::String {
-                    return Err(err(format!("`abort` expects string, got `{t0:?}`")));
-                }
-                return Ok(Some(Type::Void));
-            }
-            "min" | "max" => {
-                if args.len() != 2 {
-                    return Err(err("`min` or `max` expects 2 arguments"));
-                }
-                let t0 = self.infer_expr(env, &args[0])?;
-                let t1 = self.infer_expr(env, &args[1])?;
-                if t0 != Type::Int || t1 != Type::Int {
-                    return Err(err(format!(
-                        "`{name}` expects two int arguments, got `{t0:?}` and `{t1:?}`"
-                    )));
-                }
-                return Ok(Some(Type::Int));
-            }
-            _ => Ok(None),
+        let Some(builtin) = BuiltinMethod::resolve(name) else {
+            return Ok(None);
+        };
+        if args.len() != builtin.source_arg_count() {
+            return Err(err(format!(
+                "`{name}` expects {} argument(s), got {}",
+                builtin.source_arg_count(),
+                args.len()
+            )));
         }
+        for (index, expr) in args.iter().enumerate() {
+            let ty = self.infer_expr(env, expr)?;
+            if !builtin.binding().arg_type_matches(index, &ty) {
+                return Err(err(format!(
+                    "`{name}` argument type mismatch: expected `{:?}`, got `{ty:?}`",
+                    builtin.binding().source_arg_type(index)
+                )));
+            }
+        }
+        Ok(Some(builtin.return_neo_type()))
     }
 
     fn check_runtime_call(
@@ -1212,47 +1208,27 @@ impl<'a> TypeCheckContext<'a> {
         args: &[Expr],
         env: &mut FnEnv,
     ) -> Result<Type, TypeError> {
-        if method == "contractCall" {
-            if args.len() != 3 {
-                return Err(err(format!(
-                    "runtime.contractCall expects 3 arguments, got {}",
-                    args.len()
-                )));
-            }
-            let t0 = self.infer_expr(env, &args[0])?;
-            let t1 = self.infer_expr(env, &args[1])?;
-            let t2 = self.infer_expr(env, &args[2])?;
-            let ok0 = matches!(t0, Type::Hash160 | Type::String | Type::Hash256);
-            let ok1 = t1 == Type::String;
-            let ok2 = matches!(t2, Type::Array(_) | Type::Any);
-            if !ok0 || !ok1 || !ok2 {
-                return Err(err(format!(
-                "runtime.contractCall expects (hash160|string-like, string, array), got `{t0:?}`, `{t1:?}`, `{t2:?}`"
-            )));
-            }
-            return Ok(Type::Void);
-        }
-
-        let Some(syscall) = runtime_syscall_for_method(method) else {
+        let Some(binding) = RuntimeMethod::resolve(method) else {
             return Err(err(format!(
-                "runtime.{method} is not a known System.Runtime API"
+                "runtime.{method} is not a known runtime API"
             )));
         };
-        if args.len() != syscall.args.len() {
+        if args.len() != binding.source_arg_count() {
             return Err(err(format!(
                 "runtime.{method} expects {} argument(s), got {}",
-                syscall.args.len(),
+                binding.source_arg_count(),
                 args.len()
             )));
         }
-        for (expr, (_, sit)) in args.iter().zip(syscall.args.iter()) {
+        for (index, expr) in args.iter().enumerate() {
             let ty = self.infer_expr(env, expr)?;
-            if !satisfies_stack_item(&ty, *sit) {
+            let sit = binding.binding().source_arg_type(index);
+            if !satisfies_stack_item(&ty, sit) {
                 return Err(err(format!(
                     "runtime.{method} argument type mismatch: expected `{sit:?}`, got `{ty:?}`"
                 )));
             }
         }
-        Ok(syscall_return_type(syscall))
+        Ok(binding.return_neo_type())
     }
 }

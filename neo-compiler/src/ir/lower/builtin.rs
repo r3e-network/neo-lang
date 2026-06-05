@@ -12,48 +12,29 @@ impl<'a> Builder<'a> {
         args: &[Expr],
         env: &mut Env,
     ) -> Result<Option<ValueRef>, LowerError> {
-        match name {
-            "abort" => {
-                if args.len() != 1 {
-                    return Err(err("`abort` expects 1 argument"));
-                }
-                let message = self.lower_expr(&args[0], env)?;
-                let out = self.new_value();
-                self.emit(out, Instr::Abort { message });
-                Ok(Some(ValueRef::Value(out)))
-            }
-            "min" => {
-                if args.len() != 2 {
-                    return Err(err("`min` expects 2 arguments"));
-                }
-                let left = self.lower_expr(&args[0], env)?;
-                let right = self.lower_expr(&args[1], env)?;
-                let out = self.new_value();
-                self.emit(out, Instr::Min { left, right });
-                Ok(Some(ValueRef::Value(out)))
-            }
-            "max" => {
-                if args.len() != 2 {
-                    return Err(err("`max` expects 2 arguments"));
-                }
-                let left = self.lower_expr(&args[0], env)?;
-                let right = self.lower_expr(&args[1], env)?;
-                let out = self.new_value();
-                self.emit(out, Instr::Max { left, right });
-                Ok(Some(ValueRef::Value(out)))
-            }
-            "assert" => {
-                if args.len() != 2 {
-                    return Err(err("`assert` expects 2 arguments"));
-                }
-                let cond = self.lower_expr(&args[0], env)?;
-                let message = self.lower_expr(&args[1], env)?;
-                let out = self.new_value();
-                self.emit(out, Instr::Assert { cond, message });
-                Ok(Some(ValueRef::Value(out)))
-            }
-            _ => Ok(None),
+        let Some(builtin) = crate::target::builtin::BuiltinMethod::resolve(name) else {
+            return Ok(None);
+        };
+        if args.len() != builtin.source_arg_count() {
+            return Err(err(format!(
+                "`{name}` expects {} argument(s), got {}",
+                builtin.source_arg_count(),
+                args.len()
+            )));
         }
+        let mut values = Vec::with_capacity(args.len());
+        for arg in args {
+            values.push(self.lower_expr(arg, env)?);
+        }
+        let out = self.new_value();
+        self.emit(
+            out,
+            Instr::BuiltinCall {
+                builtin,
+                args: values,
+            },
+        );
+        Ok(Some(ValueRef::Value(out)))
     }
 
     /// `self.<map>.has` / `self.<map>.remove` lowered to storage IR; [`None`] if `base` is not a contract map field.
@@ -284,45 +265,28 @@ impl<'a> Builder<'a> {
         args: &[Expr],
         env: &mut Env,
     ) -> Result<ValueRef, LowerError> {
-        match method {
-            "log" => {
-                if args.len() != 1 {
-                    return Err(err("`log` expects 1 arguments"));
-                }
-                let message = self.lower_expr(&args[0], env)?;
-                let out = self.new_value();
-                self.emit(out, Instr::RuntimeLog { message });
-                return Ok(ValueRef::Value(out));
-            }
-            "notify" => {
-                if args.len() != 2 {
-                    return Err(err("`notify` expects 2 arguments"));
-                }
-                let event_name = self.lower_expr(&args[0], env)?;
-                let state = self.lower_expr(&args[1], env)?;
-                let out = self.new_value();
-                self.emit(out, Instr::RuntimeNotify { event_name, state });
-                return Ok(ValueRef::Value(out));
-            }
-            "contractCall" => {
-                if args.len() != 3 {
-                    return Err(err("`contractCall` expects 3 arguments"));
-                }
-                let contract = self.lower_expr(&args[0], env)?;
-                let method = self.lower_expr(&args[1], env)?;
-                let params = self.lower_expr(&args[2], env)?;
-                let out = self.new_value();
-                self.emit(
-                    out,
-                    Instr::ContractCallReadOnly {
-                        contract,
-                        method,
-                        params,
-                    },
-                );
-                return Ok(ValueRef::Value(out));
-            }
-            _ => Err(err(format!("runtime.{method} is not a known method"))),
+        let Some(binding) = crate::target::syscall::RuntimeMethod::resolve(method) else {
+            return Err(err(format!("runtime.{method} is not a known method")));
+        };
+        if args.len() != binding.source_arg_count() {
+            return Err(err(format!(
+                "runtime.{method} expects {} argument(s), got {}",
+                binding.source_arg_count(),
+                args.len()
+            )));
         }
+        let mut values = Vec::with_capacity(args.len());
+        for arg in args {
+            values.push(self.lower_expr(arg, env)?);
+        }
+        let out = self.new_value();
+        self.emit(
+            out,
+            Instr::RuntimeCall {
+                method: binding,
+                args: values,
+            },
+        );
+        Ok(ValueRef::Value(out))
     }
 }

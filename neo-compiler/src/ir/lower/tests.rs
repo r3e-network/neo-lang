@@ -1,14 +1,14 @@
 use super::*;
 
+use crate::codegen::context::{FnSig, FunctionCompileContext};
 use crate::syntax::parser::parse_source_file;
 use std::collections::HashMap;
 
-fn pkg_arity(sf: &crate::syntax::ast::SourceFile) -> HashMap<String, usize> {
-    let mut pkg = HashMap::new();
-    for f in &sf.functions {
-        pkg.insert(f.name.clone(), f.params.len());
-    }
-    pkg
+fn package_fns_from_source(sf: &crate::syntax::ast::SourceFile) -> HashMap<String, FnSig> {
+    sf.functions
+        .iter()
+        .map(|f| (f.name.clone(), FnSig::from_function(f)))
+        .collect()
 }
 
 #[test]
@@ -24,13 +24,17 @@ fn lowering_supports_for_in_array() {
         }
     "#;
     let source_file = parse_source_file(src).unwrap();
-    let pkg = pkg_arity(&source_file);
+    let fns = package_fns_from_source(&source_file);
     let func = source_file
         .functions
         .iter()
         .find(|f| f.name == "f")
         .unwrap();
-    let ir = lower_function_to_ir(func, &[], None, &pkg).expect("for-array should lower to IR");
+    let ir = lower_function_to_ir(
+        func,
+        &FunctionCompileContext::new(&source_file.structs, &fns),
+    )
+    .expect("for-array should lower to IR");
     let has_size = ir.blocks.values().any(|bb| {
         bb.instrs
             .iter()
@@ -53,13 +57,17 @@ fn lowering_supports_for_in_map() {
         }
     "#;
     let source_file = parse_source_file(src).unwrap();
-    let pkg = pkg_arity(&source_file);
+    let fns = package_fns_from_source(&source_file);
     let func = source_file
         .functions
         .iter()
         .find(|f| f.name == "f")
         .unwrap();
-    let ir = lower_function_to_ir(func, &[], None, &pkg).expect("for-map should lower to IR");
+    let ir = lower_function_to_ir(
+        func,
+        &FunctionCompileContext::new(&source_file.structs, &fns),
+    )
+    .expect("for-map should lower to IR");
     let has_keys = ir.blocks.values().any(|bb| {
         bb.instrs
             .iter()
@@ -86,14 +94,17 @@ fn lowering_supports_builtin_method_calls() {
         }
     "#;
     let source_file = parse_source_file(src).unwrap();
-    let pkg = pkg_arity(&source_file);
+    let fns = package_fns_from_source(&source_file);
     let func = source_file
         .functions
         .iter()
         .find(|f| f.name == "f")
         .unwrap();
-    let ir =
-        lower_function_to_ir(func, &[], None, &pkg).expect("builtin method calls should lower");
+    let ir = lower_function_to_ir(
+        func,
+        &FunctionCompileContext::new(&source_file.structs, &fns),
+    )
+    .expect("builtin method calls should lower");
     let has_remove = ir.blocks.values().any(|bb| {
         bb.instrs
             .iter()
@@ -111,18 +122,22 @@ fn lowering_supports_runtime_notify_and_contract_call() {
         package demo;
         void f(hash160 c) {
             runtime.notify("evt", any[] { 1 });
-            runtime.contractCall(c, "method", any[] { 1 });
+            runtime.call(c, "method", any[] { 1 });
             return;
         }
     "#;
     let source_file = parse_source_file(src).unwrap();
-    let pkg = pkg_arity(&source_file);
+    let fns = package_fns_from_source(&source_file);
     let func = source_file
         .functions
         .iter()
         .find(|f| f.name == "f")
         .unwrap();
-    lower_function_to_ir(func, &[], None, &pkg).expect("runtime calls should lower");
+    lower_function_to_ir(
+        func,
+        &FunctionCompileContext::new(&source_file.structs, &fns),
+    )
+    .expect("runtime calls should lower");
 }
 
 #[test]
@@ -137,14 +152,17 @@ fn lowering_supports_short_circuit_with_assignment_and() {
         }
     "#;
     let source_file = parse_source_file(src).unwrap();
-    let pkg = pkg_arity(&source_file);
+    let fns = package_fns_from_source(&source_file);
     let func = source_file
         .functions
         .iter()
         .find(|f| f.name == "f")
         .unwrap();
-    lower_function_to_ir(func, &[], None, &pkg)
-        .expect("short-circuit && with assignment should lower");
+    lower_function_to_ir(
+        func,
+        &FunctionCompileContext::new(&source_file.structs, &fns),
+    )
+    .expect("short-circuit && with assignment should lower");
 }
 
 #[test]
@@ -159,12 +177,15 @@ fn lowering_supports_short_circuit_with_assignment_or() {
         }
     "#;
     let source_file = parse_source_file(src).unwrap();
-    let pkg = pkg_arity(&source_file);
+    let fns = package_fns_from_source(&source_file);
     let func = source_file
         .functions
         .iter()
         .find(|f| f.name == "f")
         .unwrap();
-    lower_function_to_ir(func, &[], None, &pkg)
-        .expect("short-circuit || with assignment should lower");
+    lower_function_to_ir(
+        func,
+        &FunctionCompileContext::new(&source_file.structs, &fns),
+    )
+    .expect("short-circuit || with assignment should lower");
 }

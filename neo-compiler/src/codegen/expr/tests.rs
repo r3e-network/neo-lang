@@ -11,15 +11,17 @@ fn compile_expr_stub<'a>(
     let mut env = VarEnv::new(params)?;
     let mut builder = Builder::new();
     let mut pending = Vec::new();
-    let empty_pkg = HashMap::new();
+    let empty_fns = HashMap::new();
     ExprGen {
         builder: &mut builder,
         env: &mut env,
         structs,
         value_struct,
-        contract_fields: None,
+        contract_fields: &[],
+        contract_name: None,
+        contract_fns: None,
         pending_call_l: &mut pending,
-        package_fn_arity: &empty_pkg,
+        package_fns: &empty_fns,
     }
     .compile_expr(expr)?;
     Ok(builder.into_instructions())

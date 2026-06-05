@@ -97,7 +97,7 @@ impl<'a> Builder<'a> {
                 let struct_name = env.get_struct_var(base_name).ok_or_else(|| {
                     err("IR lowering: member access needs a struct-typed variable")
                 })?;
-                let field_index = field_index_of(self.structs, struct_name, field)?;
+                let field_index = field_index_of(self.ctx.structs, struct_name, field)?;
                 let out = self.new_value();
                 self.emit(
                     out,
@@ -135,6 +135,7 @@ impl<'a> Builder<'a> {
             Expr::Call { callee, args } => self.lower_call(callee, args, env),
             Expr::StructLit { name, fields } => {
                 let struct_decl = self
+                    .ctx
                     .structs
                     .iter()
                     .find(|s| s.name == *name)

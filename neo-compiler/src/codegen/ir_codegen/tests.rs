@@ -2,28 +2,30 @@
 
 use std::collections::HashMap;
 
+use crate::codegen::context::{FnSig, FunctionCompileContext};
 use crate::codegen::function::compile_function;
 use crate::ir::lower::lower_function_to_ir;
 use crate::ir::Terminator;
 use crate::syntax::parser::parse_source_file;
 use crate::target::opcode::OpCode;
 
-fn empty_pkg() -> HashMap<String, usize> {
-    HashMap::new()
+fn package_fns_from_source(sf: &crate::syntax::ast::SourceFile) -> HashMap<String, FnSig> {
+    sf.functions
+        .iter()
+        .map(|f| (f.name.clone(), FnSig::from_function(f)))
+        .collect()
 }
 
 fn compile_named_fn(src: &str, name: &str) -> crate::codegen::function::CompliledFunction {
     let sf = parse_source_file(src).expect("parse");
-    let mut pkg = HashMap::new();
-    for f in &sf.functions {
-        pkg.insert(f.name.clone(), f.params.len());
-    }
+    let fns = package_fns_from_source(&sf);
     let func = sf
         .functions
         .iter()
         .find(|f| f.name == name)
         .expect("find fn");
-    compile_function(func, &[], None, &pkg).expect("compile")
+    let ctx = FunctionCompileContext::new(&sf.structs, &fns);
+    compile_function(func, &ctx).expect("compile")
 }
 
 fn opcodes(inst: &[crate::target::Instruction]) -> Vec<OpCode> {
@@ -121,7 +123,9 @@ fn branch_try_detects_foldable_early_return_branch_in_ir() {
     "#;
     let sf = parse_source_file(src).expect("parse");
     let func = sf.functions.iter().find(|f| f.name == "f").unwrap();
-    let fir = lower_function_to_ir(func, &[], None, &empty_pkg()).expect("lower");
+    let fns = package_fns_from_source(&sf);
+    let ctx = FunctionCompileContext::new(&sf.structs, &fns);
+    let fir = lower_function_to_ir(func, &ctx).expect("lower");
     let mut found = false;
     for b in fir.blocks.values() {
         if let Terminator::Branch {

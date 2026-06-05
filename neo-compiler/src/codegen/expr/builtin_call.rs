@@ -15,6 +15,9 @@ impl ExprGen<'_, '_> {
                     return self.compile_runtime_call(field, args);
                 }
             }
+            if matches!(base.as_ref(), Expr::Self_) && self.contract_name.is_some() {
+                return self.compile_contract_call(field, args);
+            }
             if self.compile_builtin_method_call(base.as_ref(), field, args)? {
                 return Ok(());
             }
@@ -32,10 +35,11 @@ impl ExprGen<'_, '_> {
             if self.compile_builtin_call(name, args)? {
                 return Ok(());
             }
-            if let Some(&expected_arity) = self.package_fn_arity.get(name) {
-                if args.len() != expected_arity {
+            if let Some(sig) = self.package_fns.get(name) {
+                if args.len() != sig.arity {
                     return Err(CodegenError::Unsupported(format!(
-                        "call to `{name}` expects {expected_arity} argument(s), got {}",
+                        "call to `{name}` expects {} argument(s), got {}",
+                        sig.arity,
                         args.len()
                     )));
                 }

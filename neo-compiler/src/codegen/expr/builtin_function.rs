@@ -1,6 +1,6 @@
 use crate::codegen::CodegenError;
 use crate::syntax::ast::Expr;
-use crate::target::opcode::OpCode;
+use crate::target::builtin::{BuiltinEmitStep, BuiltinMethod};
 
 use super::ExprGen;
 
@@ -10,45 +10,22 @@ impl ExprGen<'_, '_> {
         name: &str,
         args: &[Expr],
     ) -> Result<bool, CodegenError> {
-        let err_call =
-            |msg: &str| -> CodegenError { CodegenError::Unsupported(format!("`{name}` {msg}")) };
-        match name {
-            "assert" => {
-                if args.len() != 2 {
-                    return Err(err_call("expects 2 arguments"));
-                }
-                self.compile_expr(&args[0])?;
-                self.compile_expr(&args[1])?;
-                self.builder.emit(OpCode::ASSERTMSG);
-                Ok(true)
-            }
-            "abort" => {
-                if args.len() != 1 {
-                    return Err(err_call("expects 1 argument"));
-                }
-                self.compile_expr(&args[0])?;
-                self.builder.emit(OpCode::ABORTMSG);
-                Ok(true)
-            }
-            "min" => {
-                if args.len() != 2 {
-                    return Err(err_call("expects 2 arguments"));
-                }
-                self.compile_expr(&args[0])?;
-                self.compile_expr(&args[1])?;
-                self.builder.emit(OpCode::MIN);
-                Ok(true)
-            }
-            "max" => {
-                if args.len() != 2 {
-                    return Err(err_call("expects 2 arguments"));
-                }
-                self.compile_expr(&args[0])?;
-                self.compile_expr(&args[1])?;
-                self.builder.emit(OpCode::MAX);
-                Ok(true)
-            }
-            _ => Ok(false),
+        let Some(builtin) = BuiltinMethod::resolve(name) else {
+            return Ok(false);
+        };
+        if args.len() != builtin.source_arg_count() {
+            return Err(CodegenError::Unsupported(format!(
+                "`{name}` expects {} argument(s), got {}",
+                builtin.source_arg_count(),
+                args.len()
+            )));
         }
+        for step in builtin.binding().emit_plan {
+            match step {
+                BuiltinEmitStep::SourceArg(index) => self.compile_expr(&args[*index])?,
+                BuiltinEmitStep::Op(opcode) => self.builder.emit(*opcode),
+            }
+        }
+        Ok(true)
     }
 }

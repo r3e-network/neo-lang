@@ -13,11 +13,13 @@ mod assignment;
 mod builtin_call;
 mod builtin_function;
 mod builtin_method;
+mod contract_call;
 mod contract_storage;
 mod literal;
 mod member;
 mod operator;
 mod runtime_call;
+pub(crate) mod stack_effect;
 mod struct_call;
 
 #[cfg(test)]
@@ -33,13 +35,19 @@ pub(crate) struct ExprGen<'a, 'b> {
     pub(crate) value_struct: &'b mut HashMap<String, String>,
 
     /// Mutable contract fields (storage); `None` for package-level functions.
-    pub(crate) contract_fields: Option<&'b [ContractField]>,
+    pub(crate) contract_fields: &'b [ContractField],
+
+    /// Enclosing contract name when compiling a contract method.
+    pub(crate) contract_name: Option<&'b str>,
+
+    /// Same-contract method name → signature (for `self.method(...)` → `CALL_L`).
+    pub(crate) contract_fns: Option<&'b HashMap<String, crate::codegen::context::FnSig>>,
 
     /// `(CALL_L instruction_index, callee link symbol)` e.g. `Point::distanceTo`.
     pub(crate) pending_call_l: &'b mut Vec<(usize, String)>,
 
-    /// Top-level `fn name(...)` in the same source file: `name` → parameter count (for `name(...)` → `CALL_L`).
-    pub(crate) package_fn_arity: &'b HashMap<String, usize>,
+    /// Top-level `fn name(...)` in the same source file (for `name(...)` → `CALL_L`).
+    pub(crate) package_fns: &'b HashMap<String, crate::codegen::context::FnSig>,
 }
 
 impl<'a, 'b> ExprGen<'a, 'b> {

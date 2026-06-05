@@ -12,6 +12,7 @@
 //!
 //! From https://developers.neo.org/docs/n3/foundation/neovm
 
+pub mod builtin;
 pub mod cost;
 pub mod nef;
 pub mod opcode;

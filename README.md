@@ -379,7 +379,7 @@ It contains the following functions:
   - `int currentBlockHeight()`: the height of the current generating block;
   - `int network()`: the network id of the current blockchain;
   - `int random()`: returns a random int(deterministic);
-  - `any[] contractCall(hash160 contract, string method, any[] params)`: calls a method of a contract.
+  - `any[] call(hash160 contract, string method, any[] params)`: calls a method of a contract.
   - `void log(string message)`: logs a message.
   - `void notify(string event, any[] params)`: notifies an event to the current context.
   - ..., more methods.
@@ -434,12 +434,23 @@ It contains the following functions:
 - `Notary`:
 
 ## Call Other Contracts
-Use `runtime.contractCall` to call a method of a contract.
+There are two ways to call other contracts:
+The first way is to use `ContractName.method` to call a method of another contract.
 Example:
 ```
-var result = runtime.contractCall(contract, "method", params);
+var result = ContractName.method(arg0, arg1, ...);
 ```
 The called contract must be deployed on the same network.
+This way will not create a new ExecutionContext.
+
+
+The second way is to use `runtime.call` to call a method of a contract.
+Example:
+```
+var result = runtime.call(contract, "method", args);
+```
+The called contract must be deployed on the same network.
+This way will create a new ExecutionContext.
 
 ## Import Package
 Use `import` keyword to import package from library, and the used package part will be compiled into the current contract.

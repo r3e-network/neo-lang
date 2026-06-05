@@ -13,6 +13,7 @@ mod tests;
 
 use std::collections::BTreeMap;
 
+use crate::codegen::context::FunctionCompileContext;
 use crate::ir::lower::env::Env;
 use crate::ir::*;
 use crate::syntax::ast::*;
@@ -22,9 +23,7 @@ pub use self::helpers::LowerError;
 
 pub fn lower_function_to_ir(
     func: &FunctionDecl,
-    structs: &[StructDecl],
-    contract_fields: Option<&[ContractField]>,
-    package_fn_arity: &std::collections::HashMap<String, usize>,
+    ctx: &FunctionCompileContext<'_>,
 ) -> Result<FunctionIr, LowerError> {
     let mut builder = Builder {
         blocks: BTreeMap::new(),
@@ -32,9 +31,7 @@ pub fn lower_function_to_ir(
         next_block: 0,
         next_value: 0,
         tmp_counter: 0,
-        structs,
-        contract_fields,
-        package_fn_arity,
+        ctx,
     };
     let entry = builder.new_block();
     builder.current_block = entry;

@@ -30,7 +30,8 @@ impl ExprGen<'_, '_> {
             Expr::Self_ => {
                 if self
                     .contract_fields
-                    .is_some_and(|fs| fs.iter().any(|f| f.name == *field))
+                    .iter()
+                    .any(|cf| cf.name == *field)
                 {
                     return self.compile_contract_member_load(field);
                 }
@@ -153,10 +154,7 @@ impl ExprGen<'_, '_> {
         &self,
         field: &str,
     ) -> Result<&crate::syntax::ast::ContractField, CodegenError> {
-        let fields = self.contract_fields.ok_or_else(|| {
-            CodegenError::Unsupported("`self` is only valid on contract storage fields".into())
-        })?;
-        fields
+        self.contract_fields
             .iter()
             .find(|f| f.name == field)
             .ok_or_else(|| CodegenError::Unsupported(format!("unknown contract field `{field}`")))
@@ -176,10 +174,11 @@ impl ExprGen<'_, '_> {
         if !matches!(inner.as_ref(), Expr::Self_) {
             return Ok(None);
         }
-        let Some(fields) = self.contract_fields else {
-            return Ok(None);
-        };
-        let Some(contract_field) = fields.iter().find(|f| f.name == *field_name) else {
+        let Some(contract_field) = self
+            .contract_fields
+            .iter()
+            .find(|cf| cf.name == *field_name)
+        else {
             return Ok(None);
         };
         match &contract_field.ty {

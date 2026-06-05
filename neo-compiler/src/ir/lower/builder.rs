@@ -1,5 +1,6 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
+use crate::codegen::context::FunctionCompileContext;
 use crate::ir::lower::env::Env;
 use crate::ir::lower::helpers::*;
 use crate::ir::*;
@@ -11,9 +12,7 @@ pub struct Builder<'a> {
     pub next_block: usize,
     pub next_value: usize,
     pub tmp_counter: usize,
-    pub structs: &'a [StructDecl],
-    pub contract_fields: Option<&'a [ContractField]>,
-    pub package_fn_arity: &'a HashMap<String, usize>,
+    pub ctx: &'a FunctionCompileContext<'a>,
 }
 
 impl<'a> Builder<'a> {
@@ -277,7 +276,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn contract_field_by_name(&self, name: &str) -> Option<&'a ContractField> {
-        self.contract_fields?.iter().find(|f| f.name == name)
+        self.ctx.contract_fields.iter().find(|f| f.name == name)
     }
 
     pub fn contract_self_map_types(&self, base: &Expr) -> Option<(String, Type, Type)> {
@@ -385,7 +384,7 @@ impl<'a> Builder<'a> {
         let struct_name = env
             .get_struct_var(base_name)
             .ok_or_else(|| err("IR lowering: member assign needs a struct-typed variable"))?;
-        let index = field_index_of(self.structs, struct_name, field)?;
+        let index = field_index_of(self.ctx.structs, struct_name, field)?;
         let out = self.new_value();
         self.emit(
             out,
@@ -594,7 +593,7 @@ impl<'a> Builder<'a> {
         let struct_name = env.get_struct_var(base_name).ok_or_else(|| {
             err("IR lowering: compound member assign needs a struct-typed variable")
         })?;
-        let field_index = field_index_of(self.structs, struct_name, field)?;
+        let field_index = field_index_of(self.ctx.structs, struct_name, field)?;
 
         let current_value_out = self.new_value();
         self.emit(
@@ -639,6 +638,40 @@ impl<'a> Builder<'a> {
                 }
             }
 
+            if matches!(base.as_ref(), Expr::Self_) && self.ctx.contract_name.is_some() {
+                let contract_name = self.ctx.contract_name.ok_or_else(|| {
+                    err("internal: contract method call without contract name")
+                })?;
+                let fn_table = self
+                    .ctx
+                    .contract_fns
+                    .ok_or_else(|| err("internal: contract method call without method table"))?;
+                let sig = fn_table.get(field).ok_or_else(|| {
+                    err(format!("contract has no method `{field}`"))
+                })?;
+                if args.len() != sig.arity {
+                    return Err(err(format!(
+                        "`self.{field}` expects {} argument(s), got {}",
+                        sig.arity,
+                        args.len()
+                    )));
+                }
+                let mut values = Vec::new();
+                for arg in args {
+                    values.push(self.lower_expr(arg, env)?);
+                }
+                let out = self.new_value();
+                self.emit(
+                    out,
+                    Instr::ContractMethodCall {
+                        contract_name: contract_name.to_string(),
+                        method: field.clone(),
+                        args: values,
+                    },
+                );
+                return Ok(ValueRef::Value(out));
+            }
+
             if let Some(value) = self.lower_builtin_method_call(base, field, args, env)? {
                 return Ok(value);
             }
@@ -672,8 +705,8 @@ impl<'a> Builder<'a> {
             if let Some(value) = self.lower_builtin_call(name, args, env)? {
                 return Ok(value);
             }
-            if let Some(&arity) = self.package_fn_arity.get(name) {
-                if args.len() == arity {
+            if let Some(sig) = self.ctx.package_fns.get(name) {
+                if args.len() == sig.arity {
                     let mut values = Vec::new();
                     for arg in args {
                         values.push(self.lower_expr(arg, env)?);

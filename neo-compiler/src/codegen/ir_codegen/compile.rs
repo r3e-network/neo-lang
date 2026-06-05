@@ -1,12 +1,17 @@
 use crate::codegen::function::CompliledFunction;
 use crate::codegen::CodegenError;
 use crate::ir::FunctionIr;
+use crate::syntax::ast::Type;
 use crate::target::Builder;
 
 use super::block_emit::IrBlocks;
 
 impl FunctionIr {
-    pub(crate) fn compile_ir(&self, arg_count: u8) -> Result<CompliledFunction, CodegenError> {
+    pub(crate) fn compile_ir(
+        &self,
+        arg_count: u8,
+        return_ty: &Type,
+    ) -> Result<CompliledFunction, CodegenError> {
         let mut builder = Builder::new();
         let initslot_idx = builder.instruction_count();
         builder.emit_initslot(0, arg_count);
@@ -16,7 +21,7 @@ impl FunctionIr {
             block_start,
             pending_jumps,
             call_patches,
-        } = self.emit_ir_blocks(&plan, arg_count, &mut builder)?;
+        } = self.emit_ir_blocks(&plan, arg_count, return_ty, &mut builder)?;
 
         for (instr_index, target_block) in pending_jumps {
             let target_pc = *block_start.get(&target_block).ok_or_else(|| {

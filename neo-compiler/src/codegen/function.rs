@@ -1,13 +1,15 @@
 //! Emit NeoVM [`Instruction`]s for a `FunctionDecl` (see README.md and `target::`).
 //!
 //! Layout: `INITSLOT(locals, args)`, then body. Arguments use `LDARG*`, locals `LDLOC*`.
-//! `RET` expects one return value on the stack; `void` uses `PUSHNULL` first.
+//! `RET` with no preceding push for `void` functions (no return value on stack).
 //!
 //! Locals/args: [`super::env`] (`VarEnv`). Expressions: [`super::expr`] (`ExprGen`).
 
 use std::collections::HashMap;
 
+use crate::codegen::context::FunctionCompileContext;
 use crate::codegen::env::VarEnv;
+use crate::codegen::expr::stack_effect::{expr_stmt_leaves_stack_value, CallStackEffectCtx};
 use crate::codegen::expr::ExprGen;
 use crate::codegen::CodegenError;
 use crate::ir;
@@ -18,10 +20,7 @@ use crate::target::{Builder, Instruction};
 
 pub struct FunctionCompiler<'a> {
     func: &'a FunctionDecl,
-    structs: &'a [StructDecl],
-
-    /// Cloned from the enclosing contract for methods; `None` for package functions.
-    contract_fields: Option<&'a [ContractField]>,
+    ctx: &'a FunctionCompileContext<'a>,
     builder: Builder,
     env: VarEnv,
 
@@ -31,9 +30,6 @@ pub struct FunctionCompiler<'a> {
 
     /// `(instruction_index, callee_link_symbol)` for [`OpCode::CALL_L`] placeholders
     pending_call_l: Vec<(usize, String)>,
-
-    /// Same-file top-level functions: `name` → arity (see [`ExprGen::package_fn_arity`]).
-    package_fn_arity: &'a HashMap<String, usize>,
 }
 
 pub struct CompliledFunction {
@@ -46,9 +42,7 @@ pub struct CompliledFunction {
 impl<'a> FunctionCompiler<'a> {
     pub fn new(
         func: &'a FunctionDecl,
-        structs: &'a [StructDecl],
-        contract_fields: Option<&'a [ContractField]>,
-        package_fn_arity: &'a HashMap<String, usize>,
+        ctx: &'a FunctionCompileContext<'a>,
     ) -> Result<Self, CodegenError> {
         let env = VarEnv::new(&func.params)?;
         let arg_count = func.params.len() as u8;
@@ -63,14 +57,12 @@ impl<'a> FunctionCompiler<'a> {
         builder.emit_initslot(0, arg_count);
         Ok(Self {
             func,
-            structs,
-            contract_fields,
+            ctx,
             builder,
             env,
             value_struct,
             initslot_instruction_index,
             pending_call_l: Vec::new(),
-            package_fn_arity,
         })
     }
 
@@ -88,7 +80,7 @@ impl<'a> FunctionCompiler<'a> {
                 .last()
                 .is_some_and(|instruction| instruction.opcode == OpCode::RET);
             if !ends_with_ret {
-                self.builder.emit(OpCode::RET); // no stack item if no return value
+                self.builder.emit(OpCode::RET);
             }
         }
 
@@ -106,11 +98,13 @@ impl<'a> FunctionCompiler<'a> {
         ExprGen {
             builder: &mut self.builder,
             env: &mut self.env,
-            structs: self.structs,
+            structs: self.ctx.structs,
             value_struct: &mut self.value_struct,
-            contract_fields: self.contract_fields.as_deref(),
+            contract_fields: self.ctx.contract_fields,
+            contract_name: self.ctx.contract_name,
+            contract_fns: self.ctx.contract_fns,
             pending_call_l: &mut self.pending_call_l,
-            package_fn_arity: self.package_fn_arity,
+            package_fns: self.ctx.package_fns,
         }
     }
 
@@ -134,7 +128,13 @@ impl<'a> FunctionCompiler<'a> {
             }
             Stmt::Expr(expr) => {
                 self.compile_expr(expr)?;
-                self.builder.emit(OpCode::DROP);
+                let stack_ctx = CallStackEffectCtx {
+                    package_fns: self.ctx.package_fns,
+                    contract_fns: self.ctx.contract_fns,
+                };
+                if expr_stmt_leaves_stack_value(expr, &stack_ctx) {
+                    self.builder.emit(OpCode::DROP);
+                }
             }
             Stmt::If {
                 cond,
@@ -176,7 +176,7 @@ impl<'a> FunctionCompiler<'a> {
                 if let Some(expr) = opt {
                     self.compile_expr(expr)?;
                 }
-                self.builder.emit(OpCode::RET); // no stack item if no return value
+                self.builder.emit(OpCode::RET);
             }
             Stmt::Block(block) => self.compile_block(block)?,
             Stmt::ForArray { item, iter, body } => {
@@ -316,23 +316,20 @@ impl<'a> FunctionCompiler<'a> {
 /// `System.Storage.Local.*` (see `codegen` module docs).
 pub fn compile_function(
     func: &FunctionDecl,
-    structs: &[StructDecl],
-    contract_fields: Option<&[ContractField]>,
-    package_fn_arity: &HashMap<String, usize>,
+    ctx: &FunctionCompileContext<'_>,
 ) -> Result<CompliledFunction, CodegenError> {
     // First-phase SSA IR pipeline: only for basic statements (var/assign/if/while/return) and
     // a limited expression subset. On unsupported constructs, fall back to the legacy AST codegen.
     if should_use_ir_pipeline(func) {
-        if let Ok(mut fir) =
-            ir::lower::lower_function_to_ir(func, structs, contract_fields, package_fn_arity)
-        {
+        if let Ok(mut fir) = ir::lower::lower_function_to_ir(func, ctx) {
             fir.optimize();
-            let compiled = fir.compile_ir(func.params.len() as u8)?;
-            return Ok(compiled);
+            if let Ok(compiled) = fir.compile_ir(func.params.len() as u8, &func.return_ty) {
+                return Ok(compiled);
+            }
         }
     }
 
-    FunctionCompiler::new(func, structs, contract_fields, package_fn_arity)?.compile()
+    FunctionCompiler::new(func, ctx)?.compile()
 }
 
 fn should_use_ir_pipeline(func: &FunctionDecl) -> bool {

@@ -7,6 +7,7 @@ use std::sync::LazyLock;
 
 use sha2::{Digest, Sha256};
 
+use crate::syntax::ast::Type;
 use crate::target::StackItemType;
 
 #[repr(u8)]
@@ -370,32 +371,7 @@ impl Syscall {
     };
 }
 
-/// `System.Runtime.*` syscalls exposed in neo-lang as `runtime.<camelName>`,
-/// where `<camelName>` is the Neo API segment after `System.Runtime.` with its first letter lowercased
-/// (e.g. `GetNetwork` → `getNetwork` → [`Syscall::RUNTIME_GET_NETWORK`]).
-pub const RUNTIME_SYSCALLS: &[Syscall] = &[
-    Syscall::RUNTIME_PLATFORM,
-    Syscall::RUNTIME_GET_NETWORK,
-    Syscall::RUNTIME_GET_ADDRESS_VERSION,
-    Syscall::RUNTIME_GET_TRIGGER,
-    Syscall::RUNTIME_GET_TIME,
-    Syscall::RUNTIME_GET_SCRIPT_CONTAINER,
-    Syscall::RUNTIME_GET_EXECUTING_SCRIPT_HASH,
-    Syscall::RUNTIME_GET_CALLING_SCRIPT_HASH,
-    Syscall::RUNTIME_GET_ENTRY_SCRIPT_HASH,
-    Syscall::RUNTIME_LOAD_SCRIPT,
-    Syscall::RUNTIME_CHECK_WITNESS,
-    Syscall::RUNTIME_GET_INVOCATION_COUNTER,
-    Syscall::RUNTIME_GET_RANDOM,
-    Syscall::RUNTIME_LOG,
-    Syscall::RUNTIME_NOTIFY,
-    Syscall::RUNTIME_GET_NOTIFICATIONS,
-    Syscall::RUNTIME_GAS_LEFT,
-    Syscall::RUNTIME_BURN_GAS,
-    Syscall::RUNTIME_CURRENT_SIGNERS,
-];
-
-/// `System.Runtime.GetNetwork` → `getNetwork` for source `runtime.getNetwork(...)`.
+/// `GetNetwork` → `getNetwork` (used for `System.Runtime.*` methods).
 pub fn runtime_suffix_to_camel_case(pascal_suffix: &str) -> String {
     if pascal_suffix.is_empty() {
         return String::new();
@@ -405,17 +381,240 @@ pub fn runtime_suffix_to_camel_case(pascal_suffix: &str) -> String {
     first + c.as_str()
 }
 
-/// Resolve `runtime.foo` to a syscall in [`RUNTIME_SYSCALLS`].
-pub fn runtime_syscall_for_method(method: &str) -> Option<&'static Syscall> {
-    const PREFIX: &str = "System.Runtime.";
-    for sc in RUNTIME_SYSCALLS {
-        if let Some(suffix) = sc.name.strip_prefix(PREFIX) {
-            if runtime_suffix_to_camel_case(suffix) == method {
-                return Some(sc);
-            }
+/// `System.*.*.Call` → `call`; `System.Runtime.GetNetwork` → `getNetwork`.
+pub fn default_runtime_method_name(syscall_name: &str) -> String {
+    let rest = syscall_name.strip_prefix("System.").unwrap_or(syscall_name);
+    let method = rest.rsplit('.').next().unwrap_or(rest);
+    runtime_suffix_to_camel_case(method)
+}
+
+/// One stack item to push before `SYSCALL` for a [`RuntimeBinding`] (bottom → top order).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RuntimeEmitStep {
+    SourceArg(usize),
+    InjectedInt(i64),
+    Syscall(Syscall),
+}
+
+const CONTRACT_CALL_EMIT: &[RuntimeEmitStep] = &[
+    RuntimeEmitStep::SourceArg(2),
+    RuntimeEmitStep::InjectedInt(CallFlags::ReadOnly as i64),
+    RuntimeEmitStep::SourceArg(1),
+    RuntimeEmitStep::SourceArg(0),
+    RuntimeEmitStep::Syscall(Syscall::CONTRACT_CALL),
+];
+
+const CONTRACT_CALL_SOURCE_ARGS: &[StackItemType] = &[
+    StackItemType::ByteString,
+    StackItemType::ByteString,
+    StackItemType::Array,
+];
+
+/// Metadata for exposing a NeoVM [`Syscall`] as `runtime.<method>(...)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RuntimeBinding {
+    pub method: &'static str,
+    pub syscall: Syscall,
+    /// When `None`, source arity/types match [`Syscall::args`].
+    pub source_args: Option<&'static [StackItemType]>,
+    /// When `None`, push user args in reverse [`Syscall::args`] order, then `SYSCALL`.
+    pub emit_plan: Option<&'static [RuntimeEmitStep]>,
+}
+
+impl RuntimeBinding {
+    pub const fn direct(method: &'static str, syscall: Syscall) -> Self {
+        Self {
+            method,
+            syscall,
+            source_args: None,
+            emit_plan: None,
         }
     }
-    None
+
+    pub const fn wrapped(
+        method: &'static str,
+        syscall: Syscall,
+        source_args: &'static [StackItemType],
+        emit_plan: &'static [RuntimeEmitStep],
+    ) -> Self {
+        Self {
+            method,
+            syscall,
+            source_args: Some(source_args),
+            emit_plan: Some(emit_plan),
+        }
+    }
+
+    pub fn source_arg_count(self) -> usize {
+        self.source_args
+            .map(|args| args.len())
+            .unwrap_or(self.syscall.args.len())
+    }
+
+    pub fn source_arg_type(self, index: usize) -> StackItemType {
+        if let Some(source_args) = self.source_args {
+            return source_args[index];
+        }
+        self.syscall.args[index].1
+    }
+
+    pub fn emit_steps(self) -> Vec<RuntimeEmitStep> {
+        if let Some(plan) = self.emit_plan {
+            return plan.to_vec();
+        }
+        let mut steps = Vec::with_capacity(self.syscall.args.len() + 1);
+        for index in (0..self.syscall.args.len()).rev() {
+            steps.push(RuntimeEmitStep::SourceArg(index));
+        }
+        steps.push(RuntimeEmitStep::Syscall(self.syscall));
+        steps
+    }
+
+    pub fn return_neo_type(self) -> Type {
+        syscall_return_neo_type(&self.syscall)
+    }
+
+    pub fn leaves_stack_value(self) -> bool {
+        !matches!(self.return_neo_type(), Type::Void)
+    }
+}
+
+/// All syscalls in [`SYSCALLS`] exposed under the neo-lang `runtime` package.
+pub const RUNTIME_BINDINGS: &[RuntimeBinding] = &[
+    RuntimeBinding::wrapped(
+        "call",
+        Syscall::CONTRACT_CALL,
+        CONTRACT_CALL_SOURCE_ARGS,
+        CONTRACT_CALL_EMIT,
+    ),
+    RuntimeBinding::direct("getCallFlags", Syscall::CONTRACT_GET_CALL_FLAGS),
+    RuntimeBinding::direct(
+        "createStandardAccount",
+        Syscall::CONTRACT_CREATE_STANDARD_ACCOUNT,
+    ),
+    RuntimeBinding::direct(
+        "createMultisigAccount",
+        Syscall::CONTRACT_CREATE_MULTISIG_ACCOUNT,
+    ),
+    RuntimeBinding::direct("checkSig", Syscall::CRYPTO_CHECK_SIG),
+    RuntimeBinding::direct("checkMultisig", Syscall::CRYPTO_CHECK_MULTISIG),
+    RuntimeBinding::direct("platform", Syscall::RUNTIME_PLATFORM),
+    RuntimeBinding::direct("getNetwork", Syscall::RUNTIME_GET_NETWORK),
+    RuntimeBinding::direct("getAddressVersion", Syscall::RUNTIME_GET_ADDRESS_VERSION),
+    RuntimeBinding::direct("getTrigger", Syscall::RUNTIME_GET_TRIGGER),
+    RuntimeBinding::direct("getTime", Syscall::RUNTIME_GET_TIME),
+    RuntimeBinding::direct("getScriptContainer", Syscall::RUNTIME_GET_SCRIPT_CONTAINER),
+    RuntimeBinding::direct(
+        "getExecutingScriptHash",
+        Syscall::RUNTIME_GET_EXECUTING_SCRIPT_HASH,
+    ),
+    RuntimeBinding::direct(
+        "getCallingScriptHash",
+        Syscall::RUNTIME_GET_CALLING_SCRIPT_HASH,
+    ),
+    RuntimeBinding::direct("getEntryScriptHash", Syscall::RUNTIME_GET_ENTRY_SCRIPT_HASH),
+    RuntimeBinding::direct("loadScript", Syscall::RUNTIME_LOAD_SCRIPT),
+    RuntimeBinding::direct("checkWitness", Syscall::RUNTIME_CHECK_WITNESS),
+    RuntimeBinding::direct(
+        "getInvocationCounter",
+        Syscall::RUNTIME_GET_INVOCATION_COUNTER,
+    ),
+    RuntimeBinding::direct("getRandom", Syscall::RUNTIME_GET_RANDOM),
+    RuntimeBinding::direct("log", Syscall::RUNTIME_LOG),
+    RuntimeBinding::direct("notify", Syscall::RUNTIME_NOTIFY),
+    RuntimeBinding::direct("getNotifications", Syscall::RUNTIME_GET_NOTIFICATIONS),
+    RuntimeBinding::direct("gasLeft", Syscall::RUNTIME_GAS_LEFT),
+    RuntimeBinding::direct("burnGas", Syscall::RUNTIME_BURN_GAS),
+    RuntimeBinding::direct("currentSigners", Syscall::RUNTIME_CURRENT_SIGNERS),
+    RuntimeBinding::direct("getContext", Syscall::STORAGE_GET_CONTEXT),
+    RuntimeBinding::direct("getReadOnlyContext", Syscall::STORAGE_GET_READ_ONLY_CONTEXT),
+    RuntimeBinding::direct("asReadOnly", Syscall::STORAGE_AS_READ_ONLY),
+    RuntimeBinding::direct("put", Syscall::STORAGE_PUT),
+    RuntimeBinding::direct("get", Syscall::STORAGE_GET),
+    RuntimeBinding::direct("delete", Syscall::STORAGE_DELETE),
+    RuntimeBinding::direct("find", Syscall::STORAGE_FIND),
+    // `System.Storage.Local.*` shares method names with `System.Storage.*`; contract
+    // fields use those syscalls directly in codegen, not via `runtime.*`.
+];
+
+/// Handle to a resolved `runtime.<method>` binding.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RuntimeMethod(pub &'static RuntimeBinding);
+
+impl RuntimeMethod {
+    pub fn resolve(method: &str) -> Option<Self> {
+        runtime_binding_for_method(method).map(Self)
+    }
+
+    pub fn binding(self) -> &'static RuntimeBinding {
+        self.0
+    }
+
+    pub fn source_arg_count(self) -> usize {
+        self.0.source_arg_count()
+    }
+
+    pub fn emit_steps(self) -> Vec<RuntimeEmitStep> {
+        self.0.emit_steps()
+    }
+
+    pub fn return_neo_type(self) -> Type {
+        self.0.return_neo_type()
+    }
+
+    pub fn leaves_stack_value(self) -> bool {
+        self.0.leaves_stack_value()
+    }
+}
+
+static RUNTIME_BINDING_BY_METHOD: LazyLock<HashMap<&'static str, &'static RuntimeBinding>> =
+    LazyLock::new(|| RUNTIME_BINDINGS.iter().map(|b| (b.method, b)).collect());
+
+pub fn runtime_binding_for_method(method: &str) -> Option<&'static RuntimeBinding> {
+    RUNTIME_BINDING_BY_METHOD.get(method).copied()
+}
+
+/// Deprecated alias; prefer [`runtime_binding_for_method`].
+pub fn runtime_syscall_for_method(method: &str) -> Option<&'static Syscall> {
+    runtime_binding_for_method(method).map(|binding| &binding.syscall)
+}
+
+/// Whether a neo-lang type satisfies a syscall stack-item parameter type.
+pub fn neo_type_satisfies_stack_item(ty: &Type, sit: StackItemType) -> bool {
+    match sit {
+        StackItemType::Boolean => matches!(ty, Type::Bool),
+        StackItemType::Integer => matches!(ty, Type::Int),
+        StackItemType::ByteString => matches!(ty, Type::String | Type::Hash160 | Type::Hash256),
+        // Source often passes string literals where syscall metadata says `Buffer` (e.g. `runtime.log`).
+        StackItemType::Buffer => matches!(ty, Type::Buffer | Type::String | Type::Hash160 | Type::Hash256),
+        StackItemType::Array => matches!(ty, Type::Array(_) | Type::Any),
+        StackItemType::Map => matches!(ty, Type::Map { .. } | Type::Any),
+        StackItemType::Any => true,
+        StackItemType::Pointer | StackItemType::InteropInterface => false,
+    }
+}
+
+pub fn syscall_return_neo_type(syscall: &Syscall) -> Type {
+    let Some(return_ty) = syscall.return_type else {
+        return Type::Void;
+    };
+    stack_item_to_neo_type(return_ty)
+}
+
+pub fn stack_item_to_neo_type(sit: StackItemType) -> Type {
+    match sit {
+        StackItemType::Boolean => Type::Bool,
+        StackItemType::Integer => Type::Int,
+        StackItemType::ByteString => Type::String,
+        StackItemType::Buffer => Type::Buffer,
+        StackItemType::Array => Type::Array(Box::new(Type::Any)),
+        StackItemType::Map => Type::Map {
+            key: Box::new(Type::Any),
+            value: Box::new(Type::Any),
+        },
+        StackItemType::Any => Type::Any,
+        StackItemType::Pointer | StackItemType::InteropInterface => Type::Any,
+    }
 }
 
 const SYSCALLS: &[Syscall] = &[
@@ -479,17 +678,58 @@ mod tests {
     }
 
     #[test]
+    fn default_runtime_method_names_follow_convention() {
+        for binding in RUNTIME_BINDINGS {
+            if binding.source_args.is_some() || binding.emit_plan.is_some() {
+                continue;
+            }
+            assert_eq!(
+                binding.method,
+                default_runtime_method_name(binding.syscall.name),
+                "unexpected method name for {}",
+                binding.syscall.name
+            );
+        }
+    }
+
+    #[test]
     fn runtime_get_network_resolves() {
-        let sc = runtime_syscall_for_method("getNetwork").expect("getNetwork");
-        assert_eq!(sc.name, "System.Runtime.GetNetwork");
-        assert_eq!(sc, &Syscall::RUNTIME_GET_NETWORK);
-        assert!(runtime_syscall_for_method("GetNetwork").is_none());
+        let binding = runtime_binding_for_method("getNetwork").expect("getNetwork");
+        assert_eq!(binding.syscall.name, "System.Runtime.GetNetwork");
+        assert_eq!(binding.syscall, Syscall::RUNTIME_GET_NETWORK);
+        assert!(runtime_binding_for_method("GetNetwork").is_none());
+    }
+
+    #[test]
+    fn runtime_call_resolves_with_wrapper() {
+        let binding = runtime_binding_for_method("call").expect("call");
+        assert_eq!(binding.syscall.name, "System.Contract.Call");
+        assert_eq!(binding.source_arg_count(), 3);
+        assert!(binding.emit_plan.is_some());
+    }
+
+    #[test]
+    fn runtime_storage_get_resolves() {
+        let binding = runtime_binding_for_method("get").expect("get");
+        assert_eq!(binding.syscall.name, "System.Storage.Get");
+    }
+
+    #[test]
+    fn runtime_binding_method_names_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for binding in RUNTIME_BINDINGS {
+            assert!(
+                seen.insert(binding.method),
+                "duplicate runtime method `{}`",
+                binding.method
+            );
+        }
     }
 
     #[test]
     fn runtime_platform_resolves() {
         assert_eq!(
-            runtime_syscall_for_method("platform").map(|s| s.name),
+            runtime_binding_for_method("platform").map(|b| b.syscall.name),
             Some("System.Runtime.Platform")
         );
     }

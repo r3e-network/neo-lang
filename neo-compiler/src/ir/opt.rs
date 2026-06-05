@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::ir::*;
 use crate::syntax::ast::{BinaryOp, Literal, Type, UnaryOp};
+use crate::target::builtin::BuiltinCse;
 
 impl FunctionIr {
     /// Run simple, safe optimizations: const folding/prop, copy prop, DCE.
@@ -157,21 +158,22 @@ impl FunctionIr {
                             ty: ty.clone(),
                         })
                     }
-                    Instr::Min { left, right } => {
-                        *left = norm(*left, &subst);
-                        *right = norm(*right, &subst);
-                        Some(PureKey::Min {
-                            left: *left,
-                            right: *right,
-                        })
-                    }
-                    Instr::Max { left, right } => {
-                        *left = norm(*left, &subst);
-                        *right = norm(*right, &subst);
-                        Some(PureKey::Max {
-                            left: *left,
-                            right: *right,
-                        })
+                    Instr::BuiltinCall { builtin, args } => {
+                        if let Some(cse) = builtin.cse() {
+                            if args.len() == 2 {
+                                args[0] = norm(args[0], &subst);
+                                args[1] = norm(args[1], &subst);
+                                Some(PureKey::Builtin {
+                                    cse,
+                                    left: args[0],
+                                    right: args[1],
+                                })
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
                     }
                     _ => None,
                 };
@@ -251,11 +253,8 @@ enum PureKey {
         value: ValueRef,
         ty: Type,
     },
-    Min {
-        left: ValueRef,
-        right: ValueRef,
-    },
-    Max {
+    Builtin {
+        cse: BuiltinCse,
         left: ValueRef,
         right: ValueRef,
     },
@@ -569,25 +568,11 @@ fn collect_uses_in_instr(instr: &Instr, out: &mut VecDeque<ValueId>) {
                 out.push_back(*x);
             }
         }
-        Instr::Assert { cond, message } => {
-            if let ValueRef::Value(x) = cond {
-                out.push_back(*x);
-            }
-            if let ValueRef::Value(x) = message {
-                out.push_back(*x);
-            }
-        }
-        Instr::Abort { message } => {
-            if let ValueRef::Value(x) = message {
-                out.push_back(*x);
-            }
-        }
-        Instr::Min { left, right } | Instr::Max { left, right } => {
-            if let ValueRef::Value(x) = left {
-                out.push_back(*x);
-            }
-            if let ValueRef::Value(x) = right {
-                out.push_back(*x);
+        Instr::BuiltinCall { args, .. } => {
+            for arg in args {
+                if let ValueRef::Value(x) = arg {
+                    out.push_back(*x);
+                }
             }
         }
         Instr::Cast { value, .. } => {
@@ -603,6 +588,13 @@ fn collect_uses_in_instr(instr: &Instr, out: &mut VecDeque<ValueId>) {
             }
         }
         Instr::PackageCall { args, .. } => {
+            for arg in args {
+                if let ValueRef::Value(x) = arg {
+                    out.push_back(*x);
+                }
+            }
+        }
+        Instr::ContractMethodCall { args, .. } => {
             for arg in args {
                 if let ValueRef::Value(x) = arg {
                     out.push_back(*x);
@@ -626,32 +618,11 @@ fn collect_uses_in_instr(instr: &Instr, out: &mut VecDeque<ValueId>) {
                 }
             }
         }
-        Instr::RuntimeLog { message } => {
-            if let ValueRef::Value(x) = message {
-                out.push_back(*x);
-            }
-        }
-        Instr::RuntimeNotify { event_name, state } => {
-            if let ValueRef::Value(x) = event_name {
-                out.push_back(*x);
-            }
-            if let ValueRef::Value(x) = state {
-                out.push_back(*x);
-            }
-        }
-        Instr::ContractCallReadOnly {
-            contract,
-            method,
-            params,
-        } => {
-            if let ValueRef::Value(x) = contract {
-                out.push_back(*x);
-            }
-            if let ValueRef::Value(x) = method {
-                out.push_back(*x);
-            }
-            if let ValueRef::Value(x) = params {
-                out.push_back(*x);
+        Instr::RuntimeCall { args, .. } => {
+            for arg in args {
+                if let ValueRef::Value(x) = arg {
+                    out.push_back(*x);
+                }
             }
         }
         Instr::ArrayPack { elements } => {
@@ -797,16 +768,10 @@ fn rewrite_value_refs_in_instr(instr: &mut Instr, subst: &HashMap<ValueId, Value
             *key = rewrite(*key, subst);
             *value = rewrite(*value, subst);
         }
-        Instr::Assert { cond, message } => {
-            *cond = rewrite(*cond, subst);
-            *message = rewrite(*message, subst);
-        }
-        Instr::Abort { message } => {
-            *message = rewrite(*message, subst);
-        }
-        Instr::Min { left, right } | Instr::Max { left, right } => {
-            *left = rewrite(*left, subst);
-            *right = rewrite(*right, subst);
+        Instr::BuiltinCall { args, .. } => {
+            for arg in args {
+                *arg = rewrite(*arg, subst);
+            }
         }
         Instr::Cast { value, .. } => {
             *value = rewrite(*value, subst);
@@ -817,6 +782,11 @@ fn rewrite_value_refs_in_instr(instr: &mut Instr, subst: &HashMap<ValueId, Value
             }
         }
         Instr::PackageCall { args, .. } => {
+            for arg in args {
+                *arg = rewrite(*arg, subst);
+            }
+        }
+        Instr::ContractMethodCall { args, .. } => {
             for arg in args {
                 *arg = rewrite(*arg, subst);
             }
@@ -832,21 +802,10 @@ fn rewrite_value_refs_in_instr(instr: &mut Instr, subst: &HashMap<ValueId, Value
                 *arg = rewrite(*arg, subst);
             }
         }
-        Instr::RuntimeLog { message } => {
-            *message = rewrite(*message, subst);
-        }
-        Instr::RuntimeNotify { event_name, state } => {
-            *event_name = rewrite(*event_name, subst);
-            *state = rewrite(*state, subst);
-        }
-        Instr::ContractCallReadOnly {
-            contract,
-            method,
-            params,
-        } => {
-            *contract = rewrite(*contract, subst);
-            *method = rewrite(*method, subst);
-            *params = rewrite(*params, subst);
+        Instr::RuntimeCall { args, .. } => {
+            for arg in args {
+                *arg = rewrite(*arg, subst);
+            }
         }
         Instr::ArrayPack { elements } => {
             for element in elements {

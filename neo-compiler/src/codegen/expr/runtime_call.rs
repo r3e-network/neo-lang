@@ -1,6 +1,6 @@
 use crate::codegen::CodegenError;
 use crate::syntax::ast::Expr;
-use crate::target::syscall::{runtime_syscall_for_method, CallFlags, Syscall};
+use crate::target::syscall::{RuntimeEmitStep, RuntimeMethod};
 
 use super::ExprGen;
 
@@ -10,32 +10,25 @@ impl ExprGen<'_, '_> {
         method: &str,
         args: &[Expr],
     ) -> Result<(), CodegenError> {
-        // `System.Contract.Call` exposed as `runtime.contractCall` with injected read-only flags.
-        // Syscall stack order matches `CALL`: bottom → top is last arg … first arg (see `codegen` module docs).
-        if method == "contractCall" && args.len() == 3 {
-            self.compile_expr(&args[2])?;
-            self.builder.push_int(i64::from(CallFlags::ReadOnly as u8));
-            self.compile_expr(&args[1])?;
-            self.compile_expr(&args[0])?;
-            self.builder.emit_syscall(Syscall::CONTRACT_CALL);
-            return Ok(());
+        let Some(binding) = RuntimeMethod::resolve(method) else {
+            return Err(CodegenError::Unsupported(format!(
+                "runtime.{method} is not a known runtime API or wrong arity"
+            )));
+        };
+        if args.len() != binding.source_arg_count() {
+            return Err(CodegenError::Unsupported(format!(
+                "runtime.{method} expects {} argument(s), got {}",
+                binding.source_arg_count(),
+                args.len()
+            )));
         }
-        if let Some(syscall) = runtime_syscall_for_method(method) {
-            if args.len() != syscall.args.len() {
-                return Err(CodegenError::Unsupported(format!(
-                    "runtime.{method} expects {} argument(s), got {}",
-                    syscall.args.len(),
-                    args.len()
-                )));
+        for step in binding.emit_steps() {
+            match step {
+                RuntimeEmitStep::SourceArg(index) => self.compile_expr(&args[index])?,
+                RuntimeEmitStep::InjectedInt(value) => self.builder.push_int(value),
+                RuntimeEmitStep::Syscall(syscall) => self.builder.emit_syscall(syscall),
             }
-            for arg in args.iter().rev() {
-                self.compile_expr(arg)?;
-            }
-            self.builder.emit_syscall(*syscall);
-            return Ok(());
         }
-        Err(CodegenError::Unsupported(format!(
-            "runtime.{method} is not a known System.Runtime API or wrong arity"
-        )))
+        Ok(())
     }
 }
