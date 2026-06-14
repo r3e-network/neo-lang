@@ -7,6 +7,7 @@ use crate::codegen::function::compile_function;
 use crate::ir::lower::lower_function_to_ir;
 use crate::ir::Terminator;
 use crate::syntax::parser::parse_source_file;
+use crate::target::method_token::MethodTokenRegistry;
 use crate::target::opcode::OpCode;
 
 fn package_fns_from_source(sf: &crate::syntax::ast::SourceFile) -> HashMap<String, FnSig> {
@@ -25,7 +26,7 @@ fn compile_named_fn(src: &str, name: &str) -> crate::codegen::function::Complile
         .find(|f| f.name == name)
         .expect("find fn");
     let ctx = FunctionCompileContext::new(&sf.structs, &fns);
-    compile_function(func, &ctx).expect("compile")
+    compile_function(func, &ctx, &mut MethodTokenRegistry::new()).expect("compile")
 }
 
 fn opcodes(inst: &[crate::target::Instruction]) -> Vec<OpCode> {

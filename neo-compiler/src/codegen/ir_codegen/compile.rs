@@ -11,6 +11,7 @@ impl FunctionIr {
         &self,
         arg_count: u8,
         return_ty: &Type,
+        method_tokens: &mut crate::target::method_token::MethodTokenRegistry,
     ) -> Result<CompliledFunction, CodegenError> {
         let mut builder = Builder::new();
         let initslot_idx = builder.instruction_count();
@@ -21,7 +22,7 @@ impl FunctionIr {
             block_start,
             pending_jumps,
             call_patches,
-        } = self.emit_ir_blocks(&plan, arg_count, return_ty, &mut builder)?;
+        } = self.emit_ir_blocks(&plan, arg_count, return_ty, method_tokens, &mut builder)?;
 
         for (instr_index, target_block) in pending_jumps {
             let target_pc = *block_start.get(&target_block).ok_or_else(|| {

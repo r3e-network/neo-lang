@@ -3,8 +3,9 @@
 use std::io;
 
 use crate::codegen::CompiledSourceFile;
+use crate::target::nef::MethodToken;
 use crate::target::opcode::OpCode;
-use crate::target::syscall::token_to_syscall;
+use crate::target::syscall::{token_to_syscall, CallFlags};
 use crate::target::{Instruction, StackItemType};
 
 pub(crate) struct AsmDump<'a, W: io::Write> {
@@ -33,6 +34,12 @@ impl<'a, W: io::Write> AsmDump<'a, W> {
             writeln!(self.w, "; {}::{}", c, f.name)?;
             offset = self.dump_instructions(offset, &f.instructions)?;
             writeln!(self.w)?;
+        }
+        if !compiled.method_tokens.is_empty() {
+            writeln!(self.w, "; Method tokens")?;
+            for (index, token) in compiled.method_tokens.iter().enumerate() {
+                writeln!(self.w, "{}", format_method_token(index, token))?;
+            }
         }
         Ok(())
     }
@@ -192,5 +199,64 @@ fn format_stack_item_type(ty: u8) -> String {
         "InteropInterface".into()
     } else {
         format!("UnknownStackItemType({})", ty)
+    }
+}
+
+pub(crate) fn format_method_token(index: usize, token: &MethodToken) -> String {
+    format!(
+        "{:04x}  hash={}  method={}  params={}  returns={}  call_flags={}",
+        index,
+        hex::encode(token.hash),
+        token.method,
+        token.parameters_count,
+        token.has_return_value,
+        format_call_flags(token.call_flags),
+    )
+}
+
+fn format_call_flags(flags: u8) -> String {
+    if flags == CallFlags::None as u8 {
+        return "None".into();
+    }
+    let mut parts = Vec::new();
+    if flags & CallFlags::ReadStates as u8 != 0 {
+        parts.push("ReadStates");
+    }
+    if flags & CallFlags::WriteStates as u8 != 0 {
+        parts.push("WriteStates");
+    }
+    if flags & CallFlags::AllowCall as u8 != 0 {
+        parts.push("AllowCall");
+    }
+    if flags & CallFlags::AllowNotify as u8 != 0 {
+        parts.push("AllowNotify");
+    }
+    if parts.is_empty() {
+        format!("0x{flags:02x}")
+    } else {
+        format!("{} (0x{flags:02x})", parts.join("|"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::target::natives::contract_management::CONTRACT_MANAGEMENT;
+
+    #[test]
+    fn format_method_token_includes_index_and_fields() {
+        let token = MethodToken {
+            hash: CONTRACT_MANAGEMENT.hash,
+            method: "isContract".into(),
+            parameters_count: 1,
+            has_return_value: true,
+            call_flags: CallFlags::ReadOnly as u8,
+        };
+        let line = format_method_token(0, &token);
+        assert!(line.starts_with("0000  hash="));
+        assert!(line.contains("method=isContract"));
+        assert!(line.contains("params=1"));
+        assert!(line.contains("returns=true"));
+        assert!(line.contains("call_flags=ReadStates|AllowCall (0x05)"));
     }
 }

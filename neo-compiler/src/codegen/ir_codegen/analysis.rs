@@ -80,6 +80,7 @@ impl Instr {
                 bump(*value, out);
             }
             Instr::Unary { value, .. } | Instr::Copy(value) => bump(*value, out),
+            Instr::IsNull { value, .. } => bump(*value, out),
             Instr::Binary { left, right, .. } => {
                 bump(*left, out);
                 bump(*right, out);
@@ -130,6 +131,11 @@ impl Instr {
                 }
             }
             Instr::RuntimeCall { args, .. } => {
+                for arg in args {
+                    bump(*arg, out);
+                }
+            }
+            Instr::NativeCall { args, .. } => {
                 for arg in args {
                     bump(*arg, out);
                 }
@@ -237,6 +243,7 @@ impl Instr {
                 bump(use_bb, *value, def_block, out);
             }
             Instr::Unary { value, .. } | Instr::Copy(value) => bump(use_bb, *value, def_block, out),
+            Instr::IsNull { value, .. } => bump(use_bb, *value, def_block, out),
             Instr::Binary { left, right, .. } => {
                 bump(use_bb, *left, def_block, out);
                 bump(use_bb, *right, def_block, out);
@@ -287,6 +294,11 @@ impl Instr {
                 }
             }
             Instr::RuntimeCall { args, .. } => {
+                for arg in args {
+                    bump(use_bb, *arg, def_block, out);
+                }
+            }
+            Instr::NativeCall { args, .. } => {
                 for arg in args {
                     bump(use_bb, *arg, def_block, out);
                 }

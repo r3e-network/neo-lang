@@ -229,6 +229,35 @@ pub enum Expr {
     Paren(Box<Expr>), // (expr)
 }
 
+impl Expr {
+    pub fn is_null_literal(&self) -> bool {
+        match self {
+            Expr::Literal(Literal::Null) => true,
+            Expr::Paren(inner) => inner.is_null_literal(),
+            _ => false,
+        }
+    }
+
+    /// `expr == null` or `expr != null`: non-null operand and whether the comparison is `== null`.
+    pub fn null_equality_compare(&self) -> Option<(&Expr, bool)> {
+        let Expr::Binary { op, left, right } = self else {
+            return None;
+        };
+        let eq_null = match op {
+            BinaryOp::Eq => true,
+            BinaryOp::Ne => false,
+            _ => return None,
+        };
+        if left.is_null_literal() {
+            Some((right.as_ref(), eq_null))
+        } else if right.is_null_literal() {
+            Some((left.as_ref(), eq_null))
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     Positive,
@@ -335,7 +364,7 @@ pub enum Type {
 
 impl Type {
     pub(crate) fn can_assign_to(&self, to: &Type) -> bool {
-        return self == to || matches!(self, Type::Any);
+        self == to || matches!(self, Type::Any) || matches!(to, Type::Any)
     }
 
     /// Allowed `map` key types (NeoVM map keys are scalar-like in neo-lang).

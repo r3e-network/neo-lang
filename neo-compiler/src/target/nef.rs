@@ -14,12 +14,23 @@ use sha2::{Digest, Sha256};
 pub const WILDCARD: &str = "*";
 
 /// Method token is used to identify a method in the executable file.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MethodToken {
-    pub hash: [u8; 20], // hash160
-    pub method: String,
+    pub hash: [u8; 20], // hash160, the contract hash
+    pub method: String, // the method name
     pub parameters_count: u16,
     pub has_return_value: bool,
     pub call_flags: u8,
+}
+
+impl MethodToken {
+    pub fn encode_into(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&self.hash);
+        Nef3::write_var_string(out, &self.method);
+        out.extend_from_slice(&self.parameters_count.to_le_bytes());
+        out.push(u8::from(self.has_return_value));
+        out.push(self.call_flags);
+    }
 }
 
 /// NEF3 is the neo executable format 3.
@@ -91,7 +102,9 @@ impl Nef3 {
         Self::write_var_bytes(&mut out, &self.source);
         out.push(0); // reserve1
         Self::write_var_int(&mut out, self.tokens.len() as u64);
-        // NOTE: method tokens are not emitted yet; keep empty for now.
+        for token in &self.tokens {
+            token.encode_into(&mut out);
+        }
         out.extend_from_slice(&0u16.to_le_bytes()); // reserve2
         Self::write_var_bytes(&mut out, &self.script);
 
@@ -129,6 +142,10 @@ impl Nef3 {
     fn write_var_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
         Self::write_var_int(out, bytes.len() as u64);
         out.extend_from_slice(bytes);
+    }
+
+    fn write_var_string(out: &mut Vec<u8>, s: &str) {
+        Self::write_var_bytes(out, s.as_bytes());
     }
 
     /// Read a Neo `VarInt` from `bytes` at `index`; returns `(value, new_index)`.

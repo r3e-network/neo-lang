@@ -37,7 +37,19 @@ pub(crate) fn run_build(source: &std::path::Path) -> Result<(), String> {
         .ok_or_else(|| "build: cannot determine output directory".to_string())?;
     let script = compiled.flatten_to_bytes();
     let compiler = format!("neo-compiler {}", env!("CARGO_PKG_VERSION"));
-    let nef = Nef3::new(script, &compiler);
+    let nef = Nef3 {
+        magic: Nef3::MAGIC,
+        compiler: {
+            let mut compiler_fixed = [0u8; 64];
+            let bytes = compiler.as_bytes();
+            let n = bytes.len().min(64);
+            compiler_fixed[..n].copy_from_slice(&bytes[..n]);
+            compiler_fixed
+        },
+        source: Vec::new(),
+        tokens: compiled.method_tokens.clone(),
+        script,
+    };
     let nef_bytes = nef.to_bytes();
 
     let manifest =

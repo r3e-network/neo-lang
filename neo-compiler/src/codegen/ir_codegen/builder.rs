@@ -6,6 +6,7 @@ use crate::ir::*;
 use crate::syntax::ast::{AssignOp, BinaryOp, Literal, Type, UnaryOp};
 use crate::target::builtin::{BuiltinEmitStep, BuiltinMethod};
 use crate::target::opcode::{OpCode, ToOpCode};
+use crate::target::nef::MethodToken;
 use crate::target::syscall::{RuntimeEmitStep, Syscall};
 use crate::target::{Builder, StackItemType};
 
@@ -292,6 +293,14 @@ impl Builder {
                     UnaryOp::Negative => self.emit(OpCode::NEGATE),
                     UnaryOp::Not => self.emit(OpCode::NOT),
                     UnaryOp::BitNot => self.emit(OpCode::INVERT),
+                }
+                Ok(())
+            }
+            Instr::IsNull { value, eq_null } => {
+                self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
+                self.emit(OpCode::ISNULL);
+                if !eq_null {
+                    self.emit(OpCode::NOT);
                 }
                 Ok(())
             }
@@ -723,6 +732,52 @@ impl Builder {
                 let out_uses = uses.get(&out).copied().unwrap_or(0);
                 if out_uses == 0 {
                     self.emit(OpCode::DROP);
+                } else if spill.contains(&out) {
+                    let slot = *value_slot
+                        .get(&out)
+                        .ok_or(CodegenError::LocalLimitExceeded)?;
+                    self.emit_stloc(slot);
+                    emitted_spills.insert(out);
+                }
+                Ok(())
+            }
+            Instr::NativeCall {
+                contract,
+                method,
+                args,
+            } => {
+                for arg in args.iter().rev() {
+                    self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *arg)?;
+                }
+                let return_ty = contract
+                    .resolve_method(method, args.len())
+                    .map(|m| m.return_lang_type())
+                    .unwrap_or(Type::Any);
+                let token_index = mux.method_tokens.intern(MethodToken {
+                    hash: contract.hash,
+                    method: method.clone(),
+                    parameters_count: u16::try_from(args.len()).map_err(|_| {
+                        CodegenError::Unsupported("ir-codegen: native call arg count".into())
+                    })?,
+                    has_return_value: !matches!(return_ty, Type::Void),
+                    call_flags: contract.default_call_flags(),
+                })?;
+                self.emit_callt(token_index);
+                let leaves_stack = !matches!(return_ty, Type::Void);
+                let out_uses = uses.get(&out).copied().unwrap_or(0);
+                if out_uses == 0 {
+                    if leaves_stack {
+                        self.emit(OpCode::DROP);
+                    }
+                } else if !leaves_stack {
+                    self.push_null();
+                    if spill.contains(&out) {
+                        let slot = *value_slot
+                            .get(&out)
+                            .ok_or(CodegenError::LocalLimitExceeded)?;
+                        self.emit_stloc(slot);
+                        emitted_spills.insert(out);
+                    }
                 } else if spill.contains(&out) {
                     let slot = *value_slot
                         .get(&out)

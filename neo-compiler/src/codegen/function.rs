@@ -14,6 +14,7 @@ use crate::codegen::expr::ExprGen;
 use crate::codegen::CodegenError;
 use crate::ir;
 use crate::syntax::ast::*;
+use crate::target::method_token::MethodTokenRegistry;
 use crate::target::opcode::OpCode;
 use crate::target::syscall::Syscall;
 use crate::target::{Builder, Instruction};
@@ -30,6 +31,8 @@ pub struct FunctionCompiler<'a> {
 
     /// `(instruction_index, callee_link_symbol)` for [`OpCode::CALL_L`] placeholders
     pending_call_l: Vec<(usize, String)>,
+
+    method_tokens: &'a mut MethodTokenRegistry,
 }
 
 pub struct CompliledFunction {
@@ -43,6 +46,7 @@ impl<'a> FunctionCompiler<'a> {
     pub fn new(
         func: &'a FunctionDecl,
         ctx: &'a FunctionCompileContext<'a>,
+        method_tokens: &'a mut MethodTokenRegistry,
     ) -> Result<Self, CodegenError> {
         let env = VarEnv::new(&func.params)?;
         let arg_count = func.params.len() as u8;
@@ -63,6 +67,7 @@ impl<'a> FunctionCompiler<'a> {
             value_struct,
             initslot_instruction_index,
             pending_call_l: Vec::new(),
+            method_tokens,
         })
     }
 
@@ -105,6 +110,7 @@ impl<'a> FunctionCompiler<'a> {
             contract_fns: self.ctx.contract_fns,
             pending_call_l: &mut self.pending_call_l,
             package_fns: self.ctx.package_fns,
+            method_tokens: self.method_tokens,
         }
     }
 
@@ -317,19 +323,22 @@ impl<'a> FunctionCompiler<'a> {
 pub fn compile_function(
     func: &FunctionDecl,
     ctx: &FunctionCompileContext<'_>,
+    method_tokens: &mut MethodTokenRegistry,
 ) -> Result<CompliledFunction, CodegenError> {
     // First-phase SSA IR pipeline: only for basic statements (var/assign/if/while/return) and
     // a limited expression subset. On unsupported constructs, fall back to the legacy AST codegen.
     if should_use_ir_pipeline(func) {
         if let Ok(mut fir) = ir::lower::lower_function_to_ir(func, ctx) {
             fir.optimize();
-            if let Ok(compiled) = fir.compile_ir(func.params.len() as u8, &func.return_ty) {
+            if let Ok(compiled) =
+                fir.compile_ir(func.params.len() as u8, &func.return_ty, method_tokens)
+            {
                 return Ok(compiled);
             }
         }
     }
 
-    FunctionCompiler::new(func, ctx)?.compile()
+    FunctionCompiler::new(func, ctx, method_tokens)?.compile()
 }
 
 fn should_use_ir_pipeline(func: &FunctionDecl) -> bool {

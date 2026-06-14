@@ -35,6 +35,19 @@ impl ExprGen<'_, '_> {
                 self.builder.patch_jmp_target_at_instruction(jump_done, end);
                 Ok(())
             }
+            BinaryOp::Eq | BinaryOp::Ne if left.is_null_literal() || right.is_null_literal() => {
+                let value = if left.is_null_literal() {
+                    right
+                } else {
+                    left
+                };
+                self.compile_expr(value)?;
+                self.builder.emit(OpCode::ISNULL);
+                if matches!(op, BinaryOp::Ne) {
+                    self.builder.emit(OpCode::NOT);
+                }
+                Ok(())
+            }
             _ => {
                 self.compile_expr(left)?;
                 self.compile_expr(right)?;

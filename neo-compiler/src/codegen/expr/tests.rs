@@ -1,4 +1,5 @@
 use super::*;
+use crate::target::method_token::MethodTokenRegistry;
 use crate::target::syscall::Syscall;
 use crate::target::Instruction;
 
@@ -22,6 +23,7 @@ fn compile_expr_stub<'a>(
         contract_fns: None,
         pending_call_l: &mut pending,
         package_fns: &empty_fns,
+        method_tokens: &mut MethodTokenRegistry::new(),
     }
     .compile_expr(expr)?;
     Ok(builder.into_instructions())
@@ -185,6 +187,23 @@ fn expr_binary_add_and_compare() {
     };
     let inst = compile_expr_stub(&[], &[], &mut value_struct, &expr).unwrap();
     assert!(inst.iter().any(|i| i.opcode == OpCode::EQUAL));
+}
+
+#[test]
+fn expr_ne_null_emits_isnull_not() {
+    let mut value_struct = HashMap::new();
+    let params = vec![Param {
+        name: "dest".into(),
+        ty: Type::Hash160,
+    }];
+    let expr = Expr::Binary {
+        op: BinaryOp::Ne,
+        left: Box::new(Expr::Ident("dest".into())),
+        right: Box::new(Expr::Literal(Literal::Null)),
+    };
+    let inst = compile_expr_stub(&params, &[], &mut value_struct, &expr).unwrap();
+    let opcodes: Vec<_> = inst.iter().map(|i| i.opcode).collect();
+    assert_eq!(opcodes, vec![OpCode::LDARG0, OpCode::ISNULL, OpCode::NOT]);
 }
 
 #[test]

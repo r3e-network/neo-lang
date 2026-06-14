@@ -166,11 +166,6 @@ fn decode_one(data: &[u8], ip: usize) -> Result<(Instruction, usize), String> {
     ))
 }
 
-/// Parse a contract manifest JSON (same shape as `build` output).
-pub fn parse_manifest_json(json: &str) -> Result<Manifest, String> {
-    serde_json::from_str(json).map_err(|e| format!("disasm: parse manifest error: {e}"))
-}
-
 /// Build `(byte_offset, section_title)` markers from manifest ABI method offsets.
 ///
 /// Offsets must lie on instruction boundaries in `instructions`. The compiler layout is
@@ -309,13 +304,14 @@ mod tests {
             "trusts": "*",
             "extra": {}
         }"#;
-        let manifest = parse_manifest_json(json).expect("disasm: parse manifest error");
+        let manifest: Manifest = serde_json::from_str(json).expect("disasm: parse manifest json");
         let instructions =
             decode_script(&[OpCode::INITSLOT as u8, 0, 2, OpCode::RET as u8]).unwrap();
-        let breaks = build_manifest_breaks(&manifest, &instructions).unwrap();
+        let breaks =
+            build_manifest_breaks(&manifest, &instructions).expect("disasm: build manifest breaks");
         assert_eq!(breaks.len(), 2);
         assert_eq!(breaks[0].0, 0);
-        assert!(breaks[0].1.contains("package"));
-        assert_eq!(breaks[1], (3, "C::f".to_string()));
+        assert!(breaks[0].1.contains("package")); // package / struct routines
+        assert_eq!(breaks[1], (3, "C::f".to_string())); // contract method
     }
 }

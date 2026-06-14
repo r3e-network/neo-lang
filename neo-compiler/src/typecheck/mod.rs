@@ -11,8 +11,8 @@ use thiserror::Error;
 
 use crate::syntax::ast::*;
 use crate::target::builtin::BuiltinMethod;
-use crate::target::syscall::{neo_type_satisfies_stack_item, RuntimeMethod};
-use crate::target::StackItemType;
+use crate::target::natives::{native_contract_by_name, NativeContract};
+use crate::target::syscall::RuntimeMethod;
 
 #[derive(Debug, Error)]
 pub enum TypeError {
@@ -252,10 +252,6 @@ fn check_map_key_rules_in_type(ty: &Type) -> Result<(), TypeError> {
     Ok(())
 }
 
-fn satisfies_stack_item(ty: &Type, sit: StackItemType) -> bool {
-    neo_type_satisfies_stack_item(ty, sit)
-}
-
 impl<'a> TypeCheckContext<'a> {
     fn check_function(&self, func: &FunctionDecl, fn_type: FnType) -> Result<(), TypeError> {
         let is_contract_fn = matches!(fn_type, FnType::ContractMethod { .. });
@@ -459,6 +455,14 @@ impl<'a> TypeCheckContext<'a> {
                 }
             }
             Expr::Binary { op, left, right } => {
+                if matches!(op, BinaryOp::Eq | BinaryOp::Ne) {
+                    if left.is_null_literal() {
+                        return self.infer_expr(env, right).map(|_| Type::Bool);
+                    }
+                    if right.is_null_literal() {
+                        return self.infer_expr(env, left).map(|_| Type::Bool);
+                    }
+                }
                 let lt = self.infer_expr(env, left)?;
                 let rt = self.infer_expr(env, right)?;
                 match op {
@@ -909,6 +913,9 @@ impl<'a> TypeCheckContext<'a> {
                 if pkg == "runtime" {
                     return self.check_runtime_call(field, args, env);
                 }
+                if let Some(contract) = native_contract_by_name(pkg) {
+                    return self.check_native_contract_call(contract, field, args, env);
+                }
             }
             if matches!(base.as_ref(), Expr::Self_) && env.is_contract_fn {
                 return self.check_contract_method_call(env, field, args);
@@ -975,7 +982,9 @@ impl<'a> TypeCheckContext<'a> {
             }
         }
 
-        Err(err("only package-level functions, built-in functions, struct methods, and runtime.* calls are supported"))
+        Err(err(
+            "only package-level functions, built-in functions, native contracts, struct methods, and runtime.* calls are supported",
+        ))
     }
 
     /// `self.<map>.has` / `self.<map>.remove` on a contract storage `map` field; otherwise [`None`].
@@ -1199,7 +1208,35 @@ impl<'a> TypeCheckContext<'a> {
                 )));
             }
         }
-        Ok(Some(builtin.return_neo_type()))
+        Ok(Some(builtin.return_lang_type()))
+    }
+
+    fn check_native_contract_call(
+        &self,
+        contract: &NativeContract,
+        method: &str,
+        args: &[Expr],
+        env: &mut FnEnv,
+    ) -> Result<Type, TypeError> {
+        let Some(native_method) = contract.resolve_method(method, args.len()) else {
+            return Err(err(format!(
+                "{}.{method} is not a known native contract method with {} argument(s)",
+                contract.name,
+                args.len()
+            )));
+        };
+        for (index, arg) in args.iter().enumerate() {
+            let ty = self.infer_expr(env, arg)?;
+            if !native_method.arg_type_matches(index, &ty) {
+                return Err(err(format!(
+                    "{}.{method} argument {} type mismatch: expected `{:?}`, got `{ty:?}`",
+                    contract.name,
+                    index + 1,
+                    native_method.args[index],
+                )));
+            }
+        }
+        Ok(native_method.return_lang_type())
     }
 
     fn check_runtime_call(
@@ -1209,9 +1246,7 @@ impl<'a> TypeCheckContext<'a> {
         env: &mut FnEnv,
     ) -> Result<Type, TypeError> {
         let Some(binding) = RuntimeMethod::resolve(method) else {
-            return Err(err(format!(
-                "runtime.{method} is not a known runtime API"
-            )));
+            return Err(err(format!("runtime.{method} is not a known runtime API")));
         };
         if args.len() != binding.source_arg_count() {
             return Err(err(format!(
@@ -1223,12 +1258,12 @@ impl<'a> TypeCheckContext<'a> {
         for (index, expr) in args.iter().enumerate() {
             let ty = self.infer_expr(env, expr)?;
             let sit = binding.binding().source_arg_type(index);
-            if !satisfies_stack_item(&ty, sit) {
+            if !sit.satisfies_lang_type(&ty) {
                 return Err(err(format!(
                     "runtime.{method} argument type mismatch: expected `{sit:?}`, got `{ty:?}`"
                 )));
             }
         }
-        Ok(binding.return_neo_type())
+        Ok(binding.return_lang_type())
     }
 }

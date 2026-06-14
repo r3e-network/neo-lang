@@ -1,5 +1,7 @@
 use crate::codegen::CodegenError;
-use crate::syntax::ast::Expr;
+use crate::syntax::ast::{Expr, Type};
+use crate::target::natives::{native_contract_by_name, NativeContract};
+use crate::target::nef::MethodToken;
 
 use super::ExprGen;
 
@@ -14,6 +16,9 @@ impl ExprGen<'_, '_> {
                 if pkg == "runtime" {
                     return self.compile_runtime_call(field, args);
                 }
+                if let Some(contract) = native_contract_by_name(pkg) {
+                    return self.compile_native_contract_call(contract, field, args);
+                }
             }
             if matches!(base.as_ref(), Expr::Self_) && self.contract_name.is_some() {
                 return self.compile_contract_call(field, args);
@@ -27,7 +32,7 @@ impl ExprGen<'_, '_> {
                 }
             }
             return Err(CodegenError::Unsupported(
-                "only `runtime.<method>` or struct instance `var.method(...)` support `x.y(...)` call syntax"
+                "only `runtime.<method>`, native contracts, struct instance `var.method(...)`, or `self.method(...)` support `x.y(...)` call syntax"
                     .into(),
             ));
         }
@@ -55,5 +60,39 @@ impl ExprGen<'_, '_> {
             "only package-level functions, built-in functions, struct methods, and runtime.* calls are supported"
                 .into(),
         ))
+    }
+
+    fn compile_native_contract_call(
+        &mut self,
+        contract: &NativeContract,
+        method: &str,
+        args: &[Expr],
+    ) -> Result<(), CodegenError> {
+        let native_method = contract.resolve_method(method, args.len()).ok_or_else(|| {
+            CodegenError::Unsupported(format!(
+                "native call `{}.{method}` with {} argument(s) is not defined",
+                contract.name,
+                args.len()
+            ))
+        })?;
+        let parameters_count = u16::try_from(args.len()).map_err(|_| {
+            CodegenError::Unsupported(format!(
+                "native call `{}.{method}` has too many arguments",
+                contract.name
+            ))
+        })?;
+        let return_ty = native_method.return_lang_type();
+        for arg in args.iter().rev() {
+            self.compile_expr(arg)?;
+        }
+        let token_index = self.method_tokens.intern(MethodToken {
+            hash: contract.hash,
+            method: method.to_string(),
+            parameters_count,
+            has_return_value: !matches!(return_ty, Type::Void),
+            call_flags: contract.default_call_flags(),
+        })?;
+        self.builder.emit_callt(token_index);
+        Ok(())
     }
 }

@@ -68,6 +68,7 @@ use crate::codegen::function::{compile_function, lower_struct_method};
 use crate::codegen::opt::Optimizer;
 use crate::syntax::ast::*;
 use crate::target::opcode::OpCode;
+use crate::target::method_token::{MethodTokenError, MethodTokenRegistry};
 use crate::target::Instruction;
 use crate::typecheck;
 
@@ -106,6 +107,7 @@ pub struct CompiledSourceFile {
     /// One NeoVM routine per [`StructDecl::methods`] entry (name `Struct::method`).
     pub struct_methods: Vec<CompiledFunction>,
     pub contract_methods: Vec<CompiledFunction>,
+    pub method_tokens: Vec<crate::target::nef::MethodToken>,
 }
 
 impl CompiledSourceFile {
@@ -215,13 +217,19 @@ pub enum CodegenError {
     BadIntegerLiteral(String),
     #[error("codegen: too many locals or parameters (max 255)")]
     LocalLimitExceeded,
+    #[error(transparent)]
+    MethodToken(#[from] MethodTokenError),
 }
 
-pub struct Codegen {}
+pub struct Codegen {
+    method_tokens: MethodTokenRegistry,
+}
 
 impl Codegen {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            method_tokens: MethodTokenRegistry::new(),
+        }
     }
 
     /// Compiles all top-level [`SourceFile::functions`] and every [`ContractMember::Function`]
@@ -264,7 +272,7 @@ impl Codegen {
         let package_ctx = FunctionCompileContext::new(&source.structs, &package_fns);
         let mut package_functions = Vec::with_capacity(source.functions.len());
         for func in &source.functions {
-            let compiled = compile_function(func, &package_ctx)?;
+            let compiled = compile_function(func, &package_ctx, &mut self.method_tokens)?;
             package_functions.push(CompiledFunction {
                 name: func.name.clone(),
                 contract: None,
@@ -277,7 +285,7 @@ impl Codegen {
         for struct_decl in &source.structs {
             for method in &struct_decl.methods {
                 let lowered = lower_struct_method(&struct_decl.name, method);
-                let compiled = compile_function(&lowered, &package_ctx)?;
+                let compiled = compile_function(&lowered, &package_ctx, &mut self.method_tokens)?;
                 struct_methods.push(CompiledFunction {
                     name: lowered.name.clone(),
                     contract: None,
@@ -311,7 +319,7 @@ impl Codegen {
                 );
             for member in &contract_decl.members {
                 if let ContractMember::Function(method) = member {
-                    let compiled = compile_function(method, &contract_ctx)?;
+                    let compiled = compile_function(method, &contract_ctx, &mut self.method_tokens)?;
                     contract_methods.push(CompiledFunction {
                         name: method.name.clone(),
                         contract: Some(contract_decl.name.clone()),
@@ -326,6 +334,7 @@ impl Codegen {
             package_functions,
             struct_methods,
             contract_methods,
+            method_tokens: self.method_tokens.tokens().to_vec(),
         };
         compiled.optimize();
         compiled.link_call_l_patches()?;

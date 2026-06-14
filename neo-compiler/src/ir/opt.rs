@@ -63,6 +63,13 @@ impl FunctionIr {
                             right: *right,
                         })
                     }
+                    Instr::IsNull { value, eq_null } => {
+                        *value = norm(*value, &subst);
+                        Some(PureKey::IsNull {
+                            value: *value,
+                            eq_null: *eq_null,
+                        })
+                    }
                     Instr::IndexGet { base, index } => {
                         *base = norm(*base, &subst);
                         *index = norm(*index, &subst);
@@ -248,6 +255,10 @@ enum PureKey {
         op: BinaryOp,
         left: ValueRef,
         right: ValueRef,
+    },
+    IsNull {
+        value: ValueRef,
+        eq_null: bool,
     },
     Cast {
         value: ValueRef,
@@ -532,6 +543,11 @@ fn collect_uses_in_instr(instr: &Instr, out: &mut VecDeque<ValueId>) {
                 out.push_back(*x);
             }
         }
+        Instr::IsNull { value, .. } => {
+            if let ValueRef::Value(x) = value {
+                out.push_back(*x);
+            }
+        }
         Instr::ContractStoragePut { value, .. } => {
             if let ValueRef::Value(x) = value {
                 out.push_back(*x);
@@ -625,6 +641,13 @@ fn collect_uses_in_instr(instr: &Instr, out: &mut VecDeque<ValueId>) {
                 }
             }
         }
+        Instr::NativeCall { args, .. } => {
+            for arg in args {
+                if let ValueRef::Value(x) = arg {
+                    out.push_back(*x);
+                }
+            }
+        }
         Instr::ArrayPack { elements } => {
             for element in elements {
                 if let ValueRef::Value(x) = element {
@@ -675,7 +698,9 @@ fn collect_uses_in_instr(instr: &Instr, out: &mut VecDeque<ValueId>) {
 
 fn rewrite_value_refs_in_instr(instr: &mut Instr, subst: &HashMap<ValueId, ValueRef>) {
     match instr {
-        Instr::Unary { value, .. } | Instr::Copy(value) => *value = rewrite(*value, subst),
+        Instr::Unary { value, .. } | Instr::Copy(value) | Instr::IsNull { value, .. } => {
+            *value = rewrite(*value, subst);
+        }
         Instr::StructFieldGet { base, .. } => *base = rewrite(*base, subst),
         Instr::IndexGet { base, index } => {
             *base = rewrite(*base, subst);
@@ -803,6 +828,11 @@ fn rewrite_value_refs_in_instr(instr: &mut Instr, subst: &HashMap<ValueId, Value
             }
         }
         Instr::RuntimeCall { args, .. } => {
+            for arg in args {
+                *arg = rewrite(*arg, subst);
+            }
+        }
+        Instr::NativeCall { args, .. } => {
             for arg in args {
                 *arg = rewrite(*arg, subst);
             }

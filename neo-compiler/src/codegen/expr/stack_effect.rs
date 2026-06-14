@@ -1,6 +1,7 @@
 use crate::codegen::context::FnSig;
 use crate::syntax::ast::{Expr, Type};
 use crate::target::builtin::BuiltinMethod;
+use crate::target::natives::native_contract_by_name;
 use crate::target::syscall::RuntimeMethod;
 
 use std::collections::HashMap;
@@ -13,12 +14,16 @@ pub(crate) struct CallStackEffectCtx<'a> {
 /// Whether a [`Stmt::Expr`] leaves a value on the NeoVM stack after lowering.
 pub(crate) fn expr_stmt_leaves_stack_value(expr: &Expr, ctx: &CallStackEffectCtx<'_>) -> bool {
     match expr {
-        Expr::Call { callee, .. } => call_leaves_stack_value(callee, ctx),
+        Expr::Call { callee, args } => call_leaves_stack_value(callee, args, ctx),
         _ => true,
     }
 }
 
-fn call_leaves_stack_value(callee: &Expr, ctx: &CallStackEffectCtx<'_>) -> bool {
+fn call_leaves_stack_value(
+    callee: &Expr,
+    args: &[Expr],
+    ctx: &CallStackEffectCtx<'_>,
+) -> bool {
     match callee {
         Expr::Ident(name) => {
             if let Some(builtin) = BuiltinMethod::resolve(name) {
@@ -28,8 +33,11 @@ fn call_leaves_stack_value(callee: &Expr, ctx: &CallStackEffectCtx<'_>) -> bool 
         }
         Expr::Member { base, field } => {
             if let Expr::Ident(pkg) = base.as_ref() {
-                if pkg == "runticme" {
+                if pkg == "runtime" {
                     return runtime_call_leaves_stack_value(field);
+                }
+                if let Some(contract) = native_contract_by_name(pkg) {
+                    return native_call_leaves_stack_value(contract, field, args.len());
                 }
             }
             if matches!(base.as_ref(), Expr::Self_) {
@@ -67,6 +75,17 @@ fn self_map_method_leaves_stack_value(method: &str) -> bool {
         "remove" => false,
         _ => true,
     }
+}
+
+fn native_call_leaves_stack_value(
+    contract: &crate::target::natives::NativeContract,
+    method: &str,
+    arg_count: usize,
+) -> bool {
+    contract
+        .resolve_method(method, arg_count)
+        .map(|m| m.leaves_stack_value())
+        .unwrap_or(true)
 }
 
 fn runtime_call_leaves_stack_value(method: &str) -> bool {

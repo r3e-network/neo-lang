@@ -45,6 +45,12 @@ impl<'a> Builder<'a> {
                 if matches!(op, BinaryOp::And | BinaryOp::Or) {
                     return self.lower_short_circuit(*op, left, right, env);
                 }
+                if let Some((value_expr, eq_null)) = expr.null_equality_compare() {
+                    let value = self.lower_expr(value_expr, env)?;
+                    let out = self.new_value();
+                    self.emit(out, Instr::IsNull { value, eq_null });
+                    return Ok(ValueRef::Value(out));
+                }
                 let left = self.lower_expr(left, env)?;
                 let right = self.lower_expr(right, env)?;
                 let out = self.new_value();

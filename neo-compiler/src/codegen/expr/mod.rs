@@ -6,6 +6,7 @@ use crate::codegen::env::*;
 use crate::codegen::CodegenError;
 use crate::syntax::ast::*;
 use crate::target::opcode::OpCode;
+use crate::target::method_token::MethodTokenRegistry;
 use crate::target::{Builder, StackItemType};
 pub(crate) use literal::parse_int_literal;
 
@@ -48,6 +49,8 @@ pub(crate) struct ExprGen<'a, 'b> {
 
     /// Top-level `fn name(...)` in the same source file (for `name(...)` → `CALL_L`).
     pub(crate) package_fns: &'b HashMap<String, crate::codegen::context::FnSig>,
+
+    pub(crate) method_tokens: &'b mut MethodTokenRegistry,
 }
 
 impl<'a, 'b> ExprGen<'a, 'b> {

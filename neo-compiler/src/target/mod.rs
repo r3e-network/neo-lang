@@ -14,10 +14,13 @@
 
 pub mod builtin;
 pub mod cost;
+pub mod method_token;
+pub mod natives;
 pub mod nef;
 pub mod opcode;
 pub mod syscall;
 
+use crate::syntax::ast::Type;
 use opcode::OpCode;
 use syscall::Syscall;
 
@@ -33,6 +36,38 @@ pub enum StackItemType {
     Array = 0x40,
     Map = 0x48,
     InteropInterface = 0x60,
+}
+
+impl StackItemType {
+    pub fn to_lang_type(self) -> Type {
+        match self {
+            StackItemType::Boolean => Type::Bool,
+            StackItemType::Integer => Type::Int,
+            StackItemType::ByteString => Type::String,
+            StackItemType::Buffer => Type::Buffer,
+            StackItemType::Array => Type::Array(Box::new(Type::Any)),
+            StackItemType::Map => Type::Map {
+                key: Box::new(Type::Any),
+                value: Box::new(Type::Any),
+            },
+            StackItemType::Any => Type::Any,
+            StackItemType::Pointer | StackItemType::InteropInterface => Type::Any,
+        }
+    }
+
+    pub fn satisfies_lang_type(self, ty: &Type) -> bool {
+        match self {
+            StackItemType::Boolean => matches!(ty, Type::Bool),
+            StackItemType::Integer => matches!(ty, Type::Int),
+            StackItemType::ByteString => matches!(ty, Type::String | Type::Hash160 | Type::Hash256),
+            // Source often passes string literals where syscall metadata says `Buffer` (e.g. `runtime.log`).
+            StackItemType::Buffer => matches!(ty, Type::Buffer | Type::String | Type::Hash160 | Type::Hash256),
+            StackItemType::Array => matches!(ty, Type::Array(_) | Type::Any),
+            StackItemType::Map => matches!(ty, Type::Map { .. } | Type::Any),
+            StackItemType::Any => true,
+            StackItemType::Pointer | StackItemType::InteropInterface => false,
+        }
+    }
 }
 
 /// An Instruction in NeoVM(NeoVM is a stack-based virtual machine).
@@ -288,6 +323,11 @@ impl Builder {
             operands: vec![0u8; 4],
         });
         index
+    }
+
+    /// `CALLT` with a method token index from [`MethodTokenRegistry`](crate::target::method_token::MethodTokenRegistry).
+    pub fn emit_callt(&mut self, token_index: u16) {
+        self.emit_with_operands(OpCode::CALLT, &token_index.to_le_bytes());
     }
 
     /// Patch `CALL_L` at `call_instruction_index` to jump to `target_byte_offset` (same relative encoding as `JMP_L`).

@@ -8,7 +8,6 @@ use std::sync::LazyLock;
 
 use crate::syntax::ast::Type;
 use crate::target::opcode::OpCode;
-use crate::target::syscall::{neo_type_satisfies_stack_item, stack_item_to_neo_type};
 use crate::target::StackItemType;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -60,10 +59,10 @@ impl BuiltinBinding {
         self.args[index]
     }
 
-    pub fn return_neo_type(self) -> Type {
+    pub fn return_lang_type(self) -> Type {
         match self.return_type {
             None => Type::Void,
-            Some(sit) => stack_item_to_neo_type(sit),
+            Some(sit) => sit.to_lang_type(),
         }
     }
 
@@ -72,7 +71,7 @@ impl BuiltinBinding {
     }
 
     pub fn arg_type_matches(self, index: usize, ty: &Type) -> bool {
-        neo_type_satisfies_stack_item(ty, self.args[index])
+        self.args[index].satisfies_lang_type(ty)
     }
 }
 
@@ -150,8 +149,8 @@ impl BuiltinMethod {
         self.0.source_arg_count()
     }
 
-    pub fn return_neo_type(self) -> Type {
-        self.0.return_neo_type()
+    pub fn return_lang_type(self) -> Type {
+        self.0.return_lang_type()
     }
 
     pub fn leaves_stack_value(self) -> bool {

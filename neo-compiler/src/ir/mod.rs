@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 
 use crate::syntax::ast::*;
 use crate::target::builtin::BuiltinMethod;
+use crate::target::natives::NativeContract;
 use crate::target::syscall::RuntimeMethod;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -134,6 +135,11 @@ pub enum Instr {
         left: ValueRef,
         right: ValueRef,
     },
+    /// `expr == null` or `expr != null` via ISNULL (and NOT for `!=`).
+    IsNull {
+        value: ValueRef,
+        eq_null: bool,
+    },
     /// `expr as ty` → NeoVM `CONVERT` (same stack value, new logical type).
     Cast {
         value: ValueRef,
@@ -226,6 +232,12 @@ pub enum Instr {
         method: RuntimeMethod,
         args: Vec<ValueRef>,
     },
+    /// `NativeContract.method(args...)` via NEF method token + [`OpCode::CALLT`].
+    NativeCall {
+        contract: &'static NativeContract,
+        method: String,
+        args: Vec<ValueRef>,
+    },
     /// Array literal `[...]` as NeoVM `PACK`.
     ArrayPack {
         elements: Vec<ValueRef>,
@@ -257,6 +269,7 @@ impl Instr {
             | Instr::ContractMethodCall { .. }
             | Instr::StructCall { .. }
             | Instr::RuntimeCall { .. }
+            | Instr::NativeCall { .. }
             | Instr::EvalAst(_) => true,
             _ => false,
         }
@@ -286,7 +299,8 @@ impl Instr {
             | Instr::ContractMethodCall { .. }
             | Instr::StructPack { .. }
             | Instr::StructCall { .. }
-            | Instr::RuntimeCall { .. } => true,
+            | Instr::RuntimeCall { .. }
+            | Instr::NativeCall { .. } => true,
             _ => false,
         }
     }

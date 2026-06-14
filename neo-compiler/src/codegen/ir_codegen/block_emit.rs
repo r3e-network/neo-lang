@@ -21,6 +21,7 @@ impl FunctionIr {
         plan: &StackifyPlan,
         arg_count: u8,
         _return_ty: &Type,
+        method_tokens: &mut crate::target::method_token::MethodTokenRegistry,
         builder: &mut Builder,
     ) -> Result<IrBlocks, CodegenError> {
         let mut call_patches: Vec<(usize, String)> = Vec::new();
@@ -80,6 +81,7 @@ impl FunctionIr {
                 compound_pairs: &plan.compound_local_pairs,
                 compound_index: &mut compound_emit_index,
                 call_patches: &mut call_patches,
+                method_tokens,
             };
 
             for (out, instr) in &block.instrs {

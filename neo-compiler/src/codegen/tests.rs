@@ -2,15 +2,25 @@
 
 use super::*;
 use crate::codegen::context::{FnSig, FunctionCompileContext};
+use crate::codegen::function::{compile_function, CompliledFunction};
 use crate::syntax::parser::parse_source_file;
+use crate::target::method_token::MethodTokenRegistry;
 use crate::target::opcode::OpCode;
 use crate::target::syscall::Syscall;
+use crate::target::Instruction;
 
 fn package_fns_from_source(sf: &SourceFile) -> HashMap<String, FnSig> {
     sf.functions
         .iter()
         .map(|f| (f.name.clone(), FnSig::from_function(f)))
         .collect()
+}
+
+fn compile_fn(
+    func: &FunctionDecl,
+    ctx: &FunctionCompileContext,
+) -> Result<CompliledFunction, CodegenError> {
+    compile_function(func, ctx, &mut MethodTokenRegistry::new())
 }
 
 #[test]
@@ -318,7 +328,7 @@ fn simple_add() -> FunctionDecl {
 fn compile_add_returns_ldarg_add_ret() {
     let fns = HashMap::new();
     let ctx = FunctionCompileContext::new(&[], &fns);
-    let compiled = compile_function(&simple_add(), &ctx).unwrap();
+    let compiled = compile_fn(&simple_add(), &ctx).unwrap();
     assert!(compiled.call_patches.is_empty());
     assert!(matches!(
         compiled.instructions.as_slice(),
@@ -362,7 +372,7 @@ fn void_function_implicit_return_emits_ret_without_pushnull() {
     };
     let fns = HashMap::new();
     let ctx = FunctionCompileContext::new(&[], &fns);
-    let compiled = compile_function(&f, &ctx).expect("compile function should not fail");
+    let compiled = compile_fn(&f, &ctx).expect("compile function should not fail");
     let inst = compiled.instructions;
     assert_eq!(inst[0].opcode, OpCode::INITSLOT);
     assert_eq!(inst[inst.len() - 1].opcode, OpCode::RET);
@@ -386,7 +396,7 @@ fn ssa_const_folding_eliminates_add_for_simple_var_init() {
     let fns = package_fns_from_source(&sf);
     let f = sf.functions.iter().find(|f| f.name == "f").unwrap();
     let ctx = FunctionCompileContext::new(&[], &fns);
-    let compiled = compile_function(f, &ctx).unwrap();
+    let compiled = compile_fn(f, &ctx).unwrap();
     let has_add = compiled
         .instructions
         .iter()
@@ -409,7 +419,7 @@ fn ssa_cse_eliminates_duplicate_add() {
     let fns = package_fns_from_source(&sf);
     let f = sf.functions.iter().find(|f| f.name == "f").unwrap();
     let ctx = FunctionCompileContext::new(&[], &fns);
-    let compiled = compile_function(f, &ctx).unwrap();
+    let compiled = compile_fn(f, &ctx).unwrap();
     let add_count = compiled
         .instructions
         .iter()
@@ -433,7 +443,7 @@ fn ssa_dce_removes_unused_computation() {
     let fns = package_fns_from_source(&sf);
     let f = sf.functions.iter().find(|f| f.name == "f").unwrap();
     let ctx = FunctionCompileContext::new(&[], &fns);
-    let compiled = compile_function(f, &ctx).unwrap();
+    let compiled = compile_fn(f, &ctx).unwrap();
     let add_count = compiled
         .instructions
         .iter()
@@ -466,7 +476,7 @@ fn ssa_cse_reuses_struct_member_subexpr_in_distance() {
         .unwrap();
     let lowered = lower_struct_method("Point", m);
     let ctx = FunctionCompileContext::new(&sf.structs, &fns);
-    let compiled = compile_function(&lowered, &ctx).unwrap();
+    let compiled = compile_fn(&lowered, &ctx).unwrap();
     let sub_count = compiled
         .instructions
         .iter()
@@ -502,7 +512,7 @@ fn ssa_distance_to_stackify_min_locals_and_dup_square() {
         .unwrap();
     let lowered = lower_struct_method("Point", m);
     let ctx = FunctionCompileContext::new(&sf.structs, &fns);
-    let compiled = compile_function(&lowered, &ctx).unwrap();
+    let compiled = compile_fn(&lowered, &ctx).unwrap();
     let initslot = compiled
         .instructions
         .iter()
@@ -542,7 +552,7 @@ fn ssa_cse_eliminates_duplicate_index_load() {
     let fns = package_fns_from_source(&sf);
     let f = sf.functions.iter().find(|f| f.name == "f").unwrap();
     let ctx = FunctionCompileContext::new(&[], &fns);
-    let compiled = compile_function(f, &ctx).unwrap();
+    let compiled = compile_fn(f, &ctx).unwrap();
     let pick = compiled
         .instructions
         .iter()
@@ -563,7 +573,7 @@ fn ssa_dce_keeps_index_store_without_use() {
     let fns = package_fns_from_source(&sf);
     let func = sf.functions.iter().find(|f| f.name == "f").unwrap();
     let ctx = FunctionCompileContext::new(&[], &fns);
-    let compiled = compile_function(func, &ctx).unwrap();
+    let compiled = compile_fn(func, &ctx).unwrap();
     assert!(
         compiled
             .instructions
@@ -591,7 +601,7 @@ fn ssa_struct_self_field_assign_emits_setitem() {
     let func = lower_struct_method("P", method);
     let fns = HashMap::new();
     let ctx = FunctionCompileContext::new(structs, &fns);
-    let compiled = compile_function(&func, &ctx).unwrap();
+    let compiled = compile_fn(&func, &ctx).unwrap();
     assert!(
         compiled
             .instructions
@@ -614,7 +624,7 @@ fn ssa_short_circuit_and_uses_branch_shape() {
     let fns = package_fns_from_source(&sf);
     let func = sf.functions.iter().find(|f| f.name == "f").unwrap();
     let ctx = FunctionCompileContext::new(&[], &fns);
-    let compiled = compile_function(func, &ctx).unwrap();
+    let compiled = compile_fn(func, &ctx).unwrap();
     let has_and_opcode = compiled
         .instructions
         .iter()
@@ -655,7 +665,7 @@ fn assert_lowers_to_assertmsg() {
     };
     let fns = HashMap::new();
     let ctx = FunctionCompileContext::new(&[], &fns);
-    let compiled = compile_function(&f, &ctx).expect("compile function should not fail");
+    let compiled = compile_fn(&f, &ctx).expect("compile function should not fail");
     let inst = compiled.instructions;
     assert!(inst.iter().any(|i| i.opcode == OpCode::ASSERTMSG));
     assert!(
@@ -685,7 +695,7 @@ fn min_stmt_emits_drop_after_min() {
     };
     let fns = HashMap::new();
     let ctx = FunctionCompileContext::new(&[], &fns);
-    let compiled = compile_function(&f, &ctx).expect("compile function should not fail");
+    let compiled = compile_fn(&f, &ctx).expect("compile function should not fail");
     let inst = compiled.instructions;
     assert!(inst.iter().any(|i| i.opcode == OpCode::MIN));
     assert!(
@@ -706,7 +716,7 @@ fn emit_statement_uses_runtime_notify() {
     let fns = HashMap::new();
     let ctx = FunctionCompileContext::new(&[], &fns);
     let compiled =
-        compile_function(&sf.functions[0], &ctx).expect("compile function should not fail");
+        compile_fn(&sf.functions[0], &ctx).expect("compile function should not fail");
     let inst = compiled.instructions;
     assert!(inst.iter().any(|i| i.opcode == OpCode::PACK));
     assert!(inst.iter().any(|i| i.opcode == OpCode::SYSCALL
@@ -733,7 +743,7 @@ fn package_level_body_call_emits_call_l_when_add_is_in_arity_map() {
         },
     };
     let ctx = FunctionCompileContext::new(&[], &fns);
-    let compiled = compile_function(&f, &ctx).unwrap();
+    let compiled = compile_fn(&f, &ctx).unwrap();
     assert!(
         compiled
             .instructions
@@ -759,7 +769,7 @@ fn struct_literal_and_member_pickitem() {
     let fns = HashMap::new();
     let ctx = FunctionCompileContext::new(structs, &fns);
     let compiled =
-        compile_function(&sf.functions[0], &ctx).expect("compile function should not fail");
+        compile_fn(&sf.functions[0], &ctx).expect("compile function should not fail");
     let instructions = compiled.instructions;
     assert!(instructions.iter().any(|i| i.opcode == OpCode::PACK));
     let mut pick = 0u32;

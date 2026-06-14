@@ -36,9 +36,36 @@ contract NEP17 {
         return true;
     }
 
+    void mint(hash160 account, int amount) {
+        assert(amount >= 0, "invalid amount");
+        if amount == 0 {
+            return;
+        }
+
+        self._updateBalance(account, amount);
+        self.totalSupply += amount;
+        self._postTransfer(null, account, amount);
+    }
+
+    bool burn(hash160 account, int amount) {
+        assert(amount >= 0, "invalid amount");
+        if amount == 0 {
+            return true;
+        }
+
+        if !self._updateBalance(account, -amount) {
+            return false;
+        }
+        self.totalSupply -= amount;
+        self._postTransfer(account, null, amount);
+        return true;
+    }
+
     void _postTransfer(hash160 source, hash160 dest, int amount) {
         emit transfer(source, dest, amount);
-        // TDOO: call OnNEP17Payment
+        if (dest != null && ContractManagement.isContract(dest)) {
+            runtime.call(dest, "onNEP17Payment", any[]{source, amount, null});
+        }
     }
 
     bool _updateBalance(hash160 owner, int amount) {

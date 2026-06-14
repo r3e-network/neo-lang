@@ -97,6 +97,42 @@ fn accepts_contract_self_method_call() {
 }
 
 #[test]
+fn accepts_any_array_literal_with_mixed_element_types() {
+    let src = r#"
+        contract C {
+            void m(hash160 source, int amount) {
+                runtime.call(source, "OnNEP17Payment", any[]{source, amount, null});
+            }
+        }
+    "#;
+    parse_source_file(src).expect("parse").type_check().expect("typecheck");
+}
+
+#[test]
+fn accepts_native_contract_call() {
+    let src = r#"
+        contract C {
+            bool m(hash160 dest) {
+                return ContractManagement.isContract(dest);
+            }
+        }
+    "#;
+    parse_source_file(src).expect("parse").type_check().expect("typecheck");
+}
+
+#[test]
+fn accepts_stdlib_native_call() {
+    let src = r#"
+        contract C {
+            int m(string s) {
+                return StdLib.StrLen(s);
+            }
+        }
+    "#;
+    parse_source_file(src).expect("parse").type_check().expect("typecheck");
+}
+
+#[test]
 fn rejects_map_with_non_primitive_key_type() {
     let src = r#"
         package demo;

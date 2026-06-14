@@ -71,6 +71,13 @@ impl Syscall {
             | ((hash[3] as u32) << 24)
     }
 
+    pub fn return_lang_type(self) -> Type {
+        match self.return_type {
+            None => Type::Void,
+            Some(sit) => sit.to_lang_type(),
+        }
+    }
+
     // --- System.Contract.*  ---
 
     pub const CONTRACT_CALL: Syscall = Syscall {
@@ -470,12 +477,12 @@ impl RuntimeBinding {
         steps
     }
 
-    pub fn return_neo_type(self) -> Type {
-        syscall_return_neo_type(&self.syscall)
+    pub fn return_lang_type(self) -> Type {
+        self.syscall.return_lang_type()
     }
 
     pub fn leaves_stack_value(self) -> bool {
-        !matches!(self.return_neo_type(), Type::Void)
+        !matches!(self.return_lang_type(), Type::Void)
     }
 }
 
@@ -558,8 +565,8 @@ impl RuntimeMethod {
         self.0.emit_steps()
     }
 
-    pub fn return_neo_type(self) -> Type {
-        self.0.return_neo_type()
+    pub fn return_lang_type(self) -> Type {
+        self.0.return_lang_type()
     }
 
     pub fn leaves_stack_value(self) -> bool {
@@ -572,49 +579,6 @@ static RUNTIME_BINDING_BY_METHOD: LazyLock<HashMap<&'static str, &'static Runtim
 
 pub fn runtime_binding_for_method(method: &str) -> Option<&'static RuntimeBinding> {
     RUNTIME_BINDING_BY_METHOD.get(method).copied()
-}
-
-/// Deprecated alias; prefer [`runtime_binding_for_method`].
-pub fn runtime_syscall_for_method(method: &str) -> Option<&'static Syscall> {
-    runtime_binding_for_method(method).map(|binding| &binding.syscall)
-}
-
-/// Whether a neo-lang type satisfies a syscall stack-item parameter type.
-pub fn neo_type_satisfies_stack_item(ty: &Type, sit: StackItemType) -> bool {
-    match sit {
-        StackItemType::Boolean => matches!(ty, Type::Bool),
-        StackItemType::Integer => matches!(ty, Type::Int),
-        StackItemType::ByteString => matches!(ty, Type::String | Type::Hash160 | Type::Hash256),
-        // Source often passes string literals where syscall metadata says `Buffer` (e.g. `runtime.log`).
-        StackItemType::Buffer => matches!(ty, Type::Buffer | Type::String | Type::Hash160 | Type::Hash256),
-        StackItemType::Array => matches!(ty, Type::Array(_) | Type::Any),
-        StackItemType::Map => matches!(ty, Type::Map { .. } | Type::Any),
-        StackItemType::Any => true,
-        StackItemType::Pointer | StackItemType::InteropInterface => false,
-    }
-}
-
-pub fn syscall_return_neo_type(syscall: &Syscall) -> Type {
-    let Some(return_ty) = syscall.return_type else {
-        return Type::Void;
-    };
-    stack_item_to_neo_type(return_ty)
-}
-
-pub fn stack_item_to_neo_type(sit: StackItemType) -> Type {
-    match sit {
-        StackItemType::Boolean => Type::Bool,
-        StackItemType::Integer => Type::Int,
-        StackItemType::ByteString => Type::String,
-        StackItemType::Buffer => Type::Buffer,
-        StackItemType::Array => Type::Array(Box::new(Type::Any)),
-        StackItemType::Map => Type::Map {
-            key: Box::new(Type::Any),
-            value: Box::new(Type::Any),
-        },
-        StackItemType::Any => Type::Any,
-        StackItemType::Pointer | StackItemType::InteropInterface => Type::Any,
-    }
 }
 
 const SYSCALLS: &[Syscall] = &[

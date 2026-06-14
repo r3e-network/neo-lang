@@ -636,6 +636,23 @@ impl<'a> Builder<'a> {
                 if pkg == "runtime" {
                     return self.lower_runtime_call(field, args, env);
                 }
+                if let Some(contract) = crate::target::natives::native_contract_by_name(pkg)
+                {
+                    let mut values = Vec::with_capacity(args.len());
+                    for arg in args {
+                        values.push(self.lower_expr(arg, env)?);
+                    }
+                    let out = self.new_value();
+                    self.emit(
+                        out,
+                        Instr::NativeCall {
+                            contract,
+                            method: field.clone(),
+                            args: values,
+                        },
+                    );
+                    return Ok(ValueRef::Value(out));
+                }
             }
 
             if matches!(base.as_ref(), Expr::Self_) && self.ctx.contract_name.is_some() {

@@ -178,7 +178,7 @@ fn run_disasm(
         let s = fs::read_to_string(mp)
             .map_err(|e| format!("disasm: read manifest {} error: {e}", mp.display()))?;
         Some(
-            disasm::parse_manifest_json(&s)
+            serde_json::from_str(&s)
                 .map_err(|e| format!("disasm: parse manifest {} error: {e}", mp.display()))?,
         )
     } else {

@@ -41,4 +41,5 @@ pub(super) struct IrSideEffectMux<'a> {
     pub(super) compound_pairs: &'a [(u8, u8)],
     pub(super) compound_index: &'a mut usize,
     pub(super) call_patches: &'a mut Vec<(usize, String)>,
+    pub(super) method_tokens: &'a mut crate::target::method_token::MethodTokenRegistry,
 }

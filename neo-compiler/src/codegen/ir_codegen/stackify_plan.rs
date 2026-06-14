@@ -80,6 +80,13 @@ impl FunctionIr {
         }
         spill.extend(cross_block_use.iter().copied());
 
+        // Formal `Copy(Param(i))` defs are reloadable via `LDARG` in any block; never spill them.
+        spill.retain(|id| {
+            def_instr
+                .get(id)
+                .is_some_and(|def| !matches!(def, Instr::Copy(ValueRef::Param(_))))
+        });
+
         for id in cross_block_use.iter().copied() {
             let Some(def) = def_instr_vec.get(id.0).and_then(|x| x.as_ref()) else {
                 continue;
