@@ -100,12 +100,78 @@ fn codegen_empty_source_no_functions() {
 }
 
 #[test]
-fn codegen_contract_without_methods() {
-    let sf = parse_source_file("contract X { int x; }").unwrap();
+fn codegen_contract_without_methods_emits_field_getters() {
+    let sf = parse_source_file("contract X { int x; int _y; }").unwrap();
     let out = Codegen::new().codegen_source_file(&sf).unwrap();
     assert!(out.package_functions.is_empty());
     assert!(out.struct_methods.is_empty());
-    assert!(out.contract_methods.is_empty());
+    assert_eq!(out.contract_methods.len(), 1);
+    assert_eq!(out.contract_methods[0].name, "x");
+    assert_eq!(
+        out.contract_methods[0].contract.as_deref(),
+        Some("X")
+    );
+}
+
+#[test]
+fn codegen_contract_field_getters_for_const_and_mutable() {
+    let src = r#"
+        contract C {
+            const string symbol = "TOK";
+            const int decimals = 8;
+            int totalSupply = 1000;
+            map[hash160, int] _balances;
+        }
+    "#;
+    let sf = parse_source_file(src).unwrap();
+    let out = Codegen::new().codegen_source_file(&sf).unwrap();
+    let names: Vec<_> = out.contract_methods.iter().map(|m| m.name.as_str()).collect();
+    assert_eq!(names, vec!["symbol", "decimals", "totalSupply"]);
+
+    let symbol = out.contract_methods.iter().find(|m| m.name == "symbol").unwrap();
+    assert!(
+        symbol
+            .instructions
+            .iter()
+            .any(|i| i.opcode == OpCode::PUSHDATA1 || i.opcode == OpCode::PUSHDATA2),
+        "const getter should push literal"
+    );
+    assert!(
+        !symbol
+            .instructions
+            .iter()
+            .any(|i| i.opcode == OpCode::SYSCALL),
+        "const getter should not touch storage"
+    );
+
+    let total = out
+        .contract_methods
+        .iter()
+        .find(|m| m.name == "totalSupply")
+        .unwrap();
+    assert!(
+        total
+            .instructions
+            .iter()
+            .any(|i| i.opcode == OpCode::SYSCALL),
+        "mutable getter should load from storage"
+    );
+}
+
+#[test]
+fn codegen_property_getter_conflicts_with_method() {
+    let src = r#"
+        contract C {
+            int totalSupply;
+            int totalSupply() { return 0; }
+        }
+    "#;
+    let sf = parse_source_file(src).unwrap();
+    let err = Codegen::new().codegen_source_file(&sf).unwrap_err();
+    assert!(
+        err.to_string().contains("conflicts with property getter"),
+        "got: {err}"
+    );
 }
 
 #[test]

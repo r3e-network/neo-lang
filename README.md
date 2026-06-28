@@ -321,6 +321,7 @@ bool transfer(hash160 source, hash160 dest, int amount) {
 
 A function/method name starting with `_` is a private function/method.
 Private function/methods are used to encapsulate the internal logic of the contract, and are not visible to the caller.
+For contract public properties, the compiler will generate a getter function for the property, and transaction and other contracts can call the getter function to get the property value.
 
 ## Attributes
 Attributes are used to add metadata to the contract, function, method, event, property.

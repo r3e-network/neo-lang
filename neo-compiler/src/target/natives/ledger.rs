@@ -1,6 +1,14 @@
 // Ledger contract: 0xda65b600f7124ce6c79950c1772a36403104f2be
 
-use crate::target::natives::NativeContract;
+use crate::target::natives::{NativeContract, NativeMethod};
+use crate::target::StackItemType::{ByteString as String, Integer as Int};
+
+const METHODS: &[NativeMethod] = &[
+    NativeMethod::new("currentHash", &[], Some(String)),
+    NativeMethod::new("currentIndex", &[], Some(Int)),
+    NativeMethod::new("getTransactionHeight", &[String], Some(Int)),
+    NativeMethod::new("getTransactionVMState", &[String], Some(Int)),
+];
 
 pub const LEDGER: NativeContract = NativeContract {
     name: "Ledger",
@@ -8,5 +16,5 @@ pub const LEDGER: NativeContract = NativeContract {
         0xda, 0x65, 0xb6, 0x00, 0xf7, 0x12, 0x4c, 0xe6, 0xc7, 0x99, 0x50, 0xc1, 0x77, 0x2a, 0x36,
         0x40, 0x31, 0x04, 0xf2, 0xbe,
     ],
-    methods: &[],
+    methods: METHODS,
 };

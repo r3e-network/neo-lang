@@ -1,9 +1,16 @@
 // ContractManagement contract: 0xfffdc93764dbaddd97c48f252a53ea4643faa3fd
 
 use crate::target::natives::{NativeContract, NativeMethod};
-use crate::target::StackItemType::{Boolean as Bool, ByteString as String};
+use crate::target::StackItemType::{Any, Boolean as Bool, ByteString as String, Integer};
 
-const METHODS: &[NativeMethod] = &[NativeMethod::new("isContract", &[String], Some(Bool))];
+const METHODS: &[NativeMethod] = &[
+    NativeMethod::new("getMinimumDeploymentFee", &[], Some(Integer)),
+    NativeMethod::new("isContract", &[String], Some(Bool)),
+    NativeMethod::new("hasContract", &[String, String, Integer], Some(Bool)),
+    NativeMethod::new("update", &[String, String], None),
+    NativeMethod::new("update", &[String, String, Any], None),
+    NativeMethod::new("destroy", &[], None),
+];
 
 pub const CONTRACT_MANAGEMENT: NativeContract = NativeContract {
     name: "ContractManagement",

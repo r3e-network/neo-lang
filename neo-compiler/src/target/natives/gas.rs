@@ -1,6 +1,16 @@
 // GAS contract: 0xd2a4cff31913016155e38e474a2c06d08be276cf
 
-use crate::target::natives::NativeContract;
+use crate::target::natives::{NativeContract, NativeMethod};
+use crate::target::StackItemType::{Any, Boolean as Bool, ByteString as String, Integer as Int};
+
+const METHODS: &[NativeMethod] = &[
+    NativeMethod::new("symbol", &[], Some(String)),
+    NativeMethod::new("decimals", &[], Some(Int)),
+    NativeMethod::new("totalSupply", &[], Some(Int)),
+    NativeMethod::new("balanceOf", &[String], Some(Int)),
+    NativeMethod::new("transfer", &[String, String, Int], Some(Bool)),
+    NativeMethod::new("transfer", &[String, String, Int, Any], Some(Bool)),
+];
 
 pub const GAS: NativeContract = NativeContract {
     name: "GAS",
@@ -8,5 +18,5 @@ pub const GAS: NativeContract = NativeContract {
         0xd2, 0xa4, 0xcf, 0xf3, 0x19, 0x13, 0x01, 0x61, 0x55, 0xe3, 0x8e, 0x47, 0x4a, 0x2c, 0x06,
         0xd0, 0x8b, 0xe2, 0x76, 0xcf,
     ],
-    methods: &[],
+    methods: METHODS,
 };

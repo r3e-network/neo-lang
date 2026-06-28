@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::fs;
 
+use crate::codegen::field::field_getter_specs;
 use crate::codegen::{Codegen, CompiledSourceFile};
 use crate::syntax::ast::*;
 use crate::syntax::parser;
@@ -131,6 +132,22 @@ fn build_manifest(ast: &SourceFile, compiled: &CompiledSourceFile) -> Result<Man
 
     let mut methods = Vec::new();
     let mut events = Vec::new();
+    let getter_specs = field_getter_specs(contract);
+    for spec in &getter_specs {
+        let offset = *contract_method_offset.get(&spec.func.name).ok_or_else(|| {
+            format!(
+                "no compiled offset for property getter `{}`",
+                spec.func.name
+            )
+        })?;
+        methods.push(ContractMethod {
+            name: spec.func.name.clone(),
+            parameters: vec![],
+            return_type: manifest_type_name(&spec.func.return_ty),
+            offset,
+            safe: spec.is_pure,
+        });
+    }
     for member in &contract.members {
         match member {
             ContractMember::Function(func) => {

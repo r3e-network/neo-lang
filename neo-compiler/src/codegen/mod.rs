@@ -54,6 +54,7 @@
 pub mod context;
 pub mod env;
 pub mod expr;
+pub mod field;
 pub mod function;
 pub mod ir_codegen;
 pub mod opt;
@@ -64,6 +65,7 @@ mod tests;
 use std::collections::HashMap;
 
 use crate::codegen::context::{FnSig, FunctionCompileContext};
+use crate::codegen::field::field_getter_specs;
 use crate::codegen::function::{compile_function, lower_struct_method};
 use crate::codegen::opt::Optimizer;
 use crate::syntax::ast::*;
@@ -297,6 +299,7 @@ impl Codegen {
 
         let mut contract_methods = Vec::new();
         if let Some(contract_decl) = &source.contract {
+            let getter_specs = field_getter_specs(contract_decl);
             let mut contract_fns = HashMap::new();
             for member in &contract_decl.members {
                 if let ContractMember::Function(method) = member {
@@ -311,12 +314,31 @@ impl Codegen {
                     }
                 }
             }
+            for spec in &getter_specs {
+                if contract_fns.contains_key(&spec.func.name) {
+                    return Err(CodegenError::Unsupported(format!(
+                        "contract method `{}` conflicts with property getter",
+                        spec.func.name
+                    )));
+                }
+                contract_fns.insert(spec.func.name.clone(), FnSig::from_function(&spec.func));
+            }
             let contract_ctx = FunctionCompileContext::new(&source.structs, &package_fns)
                 .with_contract(
                     contract_decl.name.as_str(),
                     storage_fields,
                     &contract_fns,
                 );
+            for spec in &getter_specs {
+                let compiled =
+                    compile_function(&spec.func, &contract_ctx, &mut self.method_tokens)?;
+                contract_methods.push(CompiledFunction {
+                    name: spec.func.name.clone(),
+                    contract: Some(contract_decl.name.clone()),
+                    instructions: compiled.instructions,
+                    call_patches: compiled.call_patches,
+                });
+            }
             for member in &contract_decl.members {
                 if let ContractMember::Function(method) = member {
                     let compiled = compile_function(method, &contract_ctx, &mut self.method_tokens)?;

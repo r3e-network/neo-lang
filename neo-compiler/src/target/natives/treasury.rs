@@ -1,6 +1,9 @@
 // Treasury contract: 0x156326f25b1b5d839a4d326aeaa75383c9563ac1
 
-use crate::target::natives::NativeContract;
+use crate::target::natives::{NativeContract, NativeMethod};
+use crate::target::StackItemType::Boolean as Bool;
+
+const METHODS: &[NativeMethod] = &[NativeMethod::new("verify", &[], Some(Bool))];
 
 pub const TREASURY: NativeContract = NativeContract {
     name: "Treasury",
@@ -8,5 +11,5 @@ pub const TREASURY: NativeContract = NativeContract {
         0x15, 0x63, 0x26, 0xf2, 0x5b, 0x1b, 0x5d, 0x83, 0x9a, 0x4d, 0x32, 0x6a, 0xea, 0xa7, 0x53,
         0x83, 0xc9, 0x56, 0x3a, 0xc1,
     ],
-    methods: &[],
+    methods: METHODS,
 };
