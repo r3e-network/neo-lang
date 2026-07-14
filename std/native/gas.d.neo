@@ -1,0 +1,15 @@
+
+#[hash160("0xd2a4cff31913016155e38e474a2c06d08be276cf")]
+declare contract GAS {
+    string symbol();
+
+    int decimals();
+
+    int totalSupply();
+
+    int balanceOf(hash160 account);
+
+    bool transfer(hash160 from, hash160 to, int amount);
+
+    bool transfer(hash160 from, hash160 to, int amount, any data);
+}

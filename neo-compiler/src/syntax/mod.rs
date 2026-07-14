@@ -26,6 +26,23 @@ mod tests {
         assert!(sf.contract.is_none());
     }
 
+    use super::parser::parse_decl_file;
+
+    #[test]
+    fn declare_contract_parses() {
+        let source = r#"
+            #[hash160("0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5")]
+            declare contract NEO {
+                int balanceOf(hash160 account);
+            }
+        "#;
+        let decl = parse_decl_file(source).unwrap();
+        assert_eq!(decl.contracts.len(), 1);
+        assert_eq!(decl.contracts[0].name, "NEO");
+        assert_eq!(decl.contracts[0].methods.len(), 1);
+        assert_eq!(decl.contracts[0].methods[0].name, "balanceOf");
+    }
+
     #[test]
     fn import_declaration() {
         let source = r#"

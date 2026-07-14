@@ -1,0 +1,50 @@
+
+#[hash160("0xacce6fd80d44e1796aa0c2c625e9e4e0ce39efc0")]
+declare contract StdLib {
+
+    string serialize(any value);
+
+    any deserialize(string value);
+
+    string jsonSerialize(any value);
+
+    any jsonDeserialize(string value);
+
+    string base64Decode(string value);
+
+    string base64Encode(string value);
+
+    string base64UrlDecode(string value);
+
+    string base64UrlEncode(string value);
+
+    string base58Decode(string value);
+
+    string base58Encode(string value);
+
+    string base58CheckEncode(string value);
+
+    string base58CheckDecode(string value);
+
+    string hexEncode(string value);
+
+    string hexDecode(string value);
+
+    string itoa(int value, int base);
+
+    int atoi(string value, int base);
+
+    int memoryCompare(string a, string b);
+
+    int memorySearch(string mem, string value);
+
+    int memorySearch(string mem, string value, int start);
+
+    int memorySearch(string mem, string value, int start, bool forward);
+
+    string[] stringSplit(string source, string separator);
+
+    string[] stringSplit(string source, string separator, bool removeEmptyEntries);
+
+    int strLen(string value);
+}

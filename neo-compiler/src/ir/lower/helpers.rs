@@ -1,5 +1,6 @@
 use crate::ir::{Terminator, ValueRef};
-use crate::syntax::ast::{Block, Expr, Stmt, StructDecl};
+use crate::natives::native_contract_by_name;
+use crate::syntax::ast::{Block, Expr, Stmt, StructDecl, Type};
 
 use std::collections::HashSet;
 
@@ -110,4 +111,27 @@ pub(crate) fn field_index_of(
         .iter()
         .position(|field_decl| field_decl.name == field)
         .ok_or_else(|| err(format!("struct `{struct_name}` has no field `{field}`")))
+}
+
+pub(crate) fn struct_name_from_init_expr(expr: &Expr, structs: &[StructDecl]) -> Option<String> {
+    match expr {
+        Expr::StructLit { name, .. } => Some(name.clone()),
+        Expr::Call { callee, args } => {
+            let Expr::Member { base, field } = callee.as_ref() else {
+                return None;
+            };
+            let Expr::Ident(pkg) = base.as_ref() else {
+                return None;
+            };
+            let contract = native_contract_by_name(pkg)?;
+            let ret = contract.infer_return_type(field, args.len());
+            if let Type::Named(sn) = ret {
+                if structs.iter().any(|s| s.name == sn) {
+                    return Some(sn);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
 }

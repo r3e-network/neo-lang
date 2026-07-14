@@ -741,7 +741,7 @@ impl Builder {
                 }
                 Ok(())
             }
-            Instr::NativeCall {
+            Instr::ExternCall {
                 contract,
                 method,
                 args,
@@ -751,16 +751,16 @@ impl Builder {
                 }
                 let return_ty = contract
                     .resolve_method(method, args.len())
-                    .map(|m| m.return_lang_type())
+                    .map(|m| m.return_ty.clone())
                     .unwrap_or(Type::Any);
                 let token_index = mux.method_tokens.intern(MethodToken {
                     hash: contract.hash,
                     method: method.clone(),
                     parameters_count: u16::try_from(args.len()).map_err(|_| {
-                        CodegenError::Unsupported("ir-codegen: native call arg count".into())
+                        CodegenError::Unsupported("ir-codegen: external call arg count".into())
                     })?,
                     has_return_value: !matches!(return_ty, Type::Void),
-                    call_flags: contract.default_call_flags(),
+                    call_flags: contract.call_flags,
                 })?;
                 self.emit_callt(token_index);
                 let leaves_stack = !matches!(return_ty, Type::Void);

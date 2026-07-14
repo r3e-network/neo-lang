@@ -1,0 +1,6 @@
+
+#[hash160("0x156326f25b1b5d839a4d326aeaa75383c9563ac1")]
+declare contract Treasury {
+
+    bool verify();
+}

@@ -1,0 +1,18 @@
+
+#[hash160("0xc1e14f19c3e60d0b9244d06dd7ba9b113135ec3b")]
+declare contract Notary {
+
+    bool lockDepositUntil(hash160 id, int until);
+
+    bool withdraw(hash160 id);
+
+    bool withdraw(hash160 id, hash160 to);
+
+    int balanceOf(hash160 id);
+
+    int expirationOf(hash160 id);
+
+    bool verify(hash160 id);
+
+    int getMaxNotValidBeforeDelta();
+}

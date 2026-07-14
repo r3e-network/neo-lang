@@ -636,8 +636,7 @@ impl<'a> Builder<'a> {
                 if pkg == "runtime" {
                     return self.lower_runtime_call(field, args, env);
                 }
-                if let Some(contract) = crate::target::natives::native_contract_by_name(pkg)
-                {
+                if let Some(contract) = crate::natives::native_contract_by_name(pkg) {
                     let mut values = Vec::with_capacity(args.len());
                     for arg in args {
                         values.push(self.lower_expr(arg, env)?);
@@ -645,7 +644,7 @@ impl<'a> Builder<'a> {
                     let out = self.new_value();
                     self.emit(
                         out,
-                        Instr::NativeCall {
+                        Instr::ExternCall {
                             contract,
                             method: field.clone(),
                             args: values,
@@ -656,16 +655,17 @@ impl<'a> Builder<'a> {
             }
 
             if matches!(base.as_ref(), Expr::Self_) && self.ctx.contract_name.is_some() {
-                let contract_name = self.ctx.contract_name.ok_or_else(|| {
-                    err("internal: contract method call without contract name")
-                })?;
+                let contract_name = self
+                    .ctx
+                    .contract_name
+                    .ok_or_else(|| err("internal: contract method call without contract name"))?;
                 let fn_table = self
                     .ctx
                     .contract_fns
                     .ok_or_else(|| err("internal: contract method call without method table"))?;
-                let sig = fn_table.get(field).ok_or_else(|| {
-                    err(format!("contract has no method `{field}`"))
-                })?;
+                let sig = fn_table
+                    .get(field)
+                    .ok_or_else(|| err(format!("contract has no method `{field}`")))?;
                 if args.len() != sig.arity {
                     return Err(err(format!(
                         "`self.{field}` expects {} argument(s), got {}",

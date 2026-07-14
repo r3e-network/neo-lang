@@ -3,6 +3,7 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
     Contract,          // contract
+    Declare,           // declare
     Package,           // package
     Struct,            // struct
     Import,            // import
@@ -368,6 +369,7 @@ fn is_ident_cont(c: u8) -> bool {
 fn keyword_or_ident(s: &str) -> Token {
     match s {
         "contract" => Token::Contract,
+        "declare" => Token::Declare,
         "package" => Token::Package,
         "struct" => Token::Struct,
         "import" => Token::Import,

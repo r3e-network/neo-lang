@@ -24,11 +24,17 @@ impl<'a> Builder<'a> {
                     ValueRef::Value(out)
                 };
                 env.set(name, value);
-                if let Some(Expr::StructLit {
-                    name: struct_name, ..
-                }) = init.as_ref()
-                {
-                    env.set_struct_var(name, struct_name);
+                if let Some(expr) = init {
+                    if let Expr::StructLit {
+                        name: struct_name, ..
+                    } = expr
+                    {
+                        env.set_struct_var(name, struct_name);
+                    } else if let Some(struct_name) =
+                        struct_name_from_init_expr(expr, self.ctx.structs)
+                    {
+                        env.set_struct_var(name, &struct_name);
+                    }
                 }
                 Ok(())
             }

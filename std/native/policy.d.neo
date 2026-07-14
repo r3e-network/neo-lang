@@ -1,0 +1,16 @@
+
+#[hash160("0xcc5e4edd9f5f8dba8bb65734541df7a1c081c67b")]
+declare contract Policy {
+
+    int getFeePerByte();
+
+    int getExecFeeFactor();
+
+    int getExecPicoFeeFactor();
+
+    int getStoragePrice();
+
+    bool isBlocked(hash160 account);
+
+    int getAttributeFee(int attributeType);
+}

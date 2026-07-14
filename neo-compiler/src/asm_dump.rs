@@ -241,12 +241,13 @@ fn format_call_flags(flags: u8) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::target::natives::contract_management::CONTRACT_MANAGEMENT;
+    use crate::natives::native_contract_by_name;
 
     #[test]
     fn format_method_token_includes_index_and_fields() {
+        let contract = native_contract_by_name("ContractManagement").expect("ContractManagement");
         let token = MethodToken {
-            hash: CONTRACT_MANAGEMENT.hash,
+            hash: contract.hash,
             method: "isContract".into(),
             parameters_count: 1,
             has_return_value: true,

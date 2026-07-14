@@ -41,14 +41,15 @@ impl MethodTokenRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::target::natives::contract_management::CONTRACT_MANAGEMENT;
+    use crate::natives::native_contract_by_name;
     use crate::target::syscall::CallFlags;
 
     #[test]
     fn intern_deduplicates_identical_tokens() {
+        let contract = native_contract_by_name("ContractManagement").expect("ContractManagement");
         let mut registry = MethodTokenRegistry::new();
         let token = MethodToken {
-            hash: CONTRACT_MANAGEMENT.hash,
+            hash: contract.hash,
             method: "isContract".into(),
             parameters_count: 1,
             has_return_value: true,

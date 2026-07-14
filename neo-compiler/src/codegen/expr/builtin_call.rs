@@ -1,6 +1,6 @@
 use crate::codegen::CodegenError;
 use crate::syntax::ast::{Expr, Type};
-use crate::target::natives::{native_contract_by_name, NativeContract};
+use crate::natives::{native_contract_by_name, ExternContract};
 use crate::target::nef::MethodToken;
 
 use super::ExprGen;
@@ -17,7 +17,7 @@ impl ExprGen<'_, '_> {
                     return self.compile_runtime_call(field, args);
                 }
                 if let Some(contract) = native_contract_by_name(pkg) {
-                    return self.compile_native_contract_call(contract, field, args);
+                    return self.compile_extern_contract_call(contract, field, args);
                 }
             }
             if matches!(base.as_ref(), Expr::Self_) && self.contract_name.is_some() {
@@ -32,7 +32,7 @@ impl ExprGen<'_, '_> {
                 }
             }
             return Err(CodegenError::Unsupported(
-                "only `runtime.<method>`, native contracts, struct instance `var.method(...)`, or `self.method(...)` support `x.y(...)` call syntax"
+                "only `runtime.<method>`, external contracts, struct instance `var.method(...)`, or `self.method(...)` support `x.y(...)` call syntax"
                     .into(),
             ));
         }
@@ -62,26 +62,26 @@ impl ExprGen<'_, '_> {
         ))
     }
 
-    fn compile_native_contract_call(
+    fn compile_extern_contract_call(
         &mut self,
-        contract: &NativeContract,
+        contract: &ExternContract,
         method: &str,
         args: &[Expr],
     ) -> Result<(), CodegenError> {
-        let native_method = contract.resolve_method(method, args.len()).ok_or_else(|| {
+        let extern_method = contract.resolve_method(method, args.len()).ok_or_else(|| {
             CodegenError::Unsupported(format!(
-                "native call `{}.{method}` with {} argument(s) is not defined",
+                "external call `{}.{method}` with {} argument(s) is not defined",
                 contract.name,
                 args.len()
             ))
         })?;
         let parameters_count = u16::try_from(args.len()).map_err(|_| {
             CodegenError::Unsupported(format!(
-                "native call `{}.{method}` has too many arguments",
+                "external call `{}.{method}` has too many arguments",
                 contract.name
             ))
         })?;
-        let return_ty = native_method.return_lang_type();
+        let return_ty = extern_method.return_ty.clone();
         for arg in args.iter().rev() {
             self.compile_expr(arg)?;
         }
@@ -90,7 +90,7 @@ impl ExprGen<'_, '_> {
             method: method.to_string(),
             parameters_count,
             has_return_value: !matches!(return_ty, Type::Void),
-            call_flags: contract.default_call_flags(),
+            call_flags: contract.call_flags,
         })?;
         self.builder.emit_callt(token_index);
         Ok(())

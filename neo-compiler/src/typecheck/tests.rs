@@ -125,11 +125,48 @@ fn accepts_stdlib_native_call() {
     let src = r#"
         contract C {
             int m(string s) {
-                return StdLib.StrLen(s);
+                return StdLib.strLen(s);
             }
         }
     "#;
     parse_source_file(src).expect("parse").type_check().expect("typecheck");
+}
+
+#[test]
+fn accepts_builtin_transaction_struct_literal_and_member() {
+    let src = r#"
+        contract C {
+            hash256 m() {
+                var tx = Transaction {
+                    hash: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+                    version: 0,
+                    nonce: 0,
+                    sender: "0x1234567890abcdef1234567890abcdef12345678",
+                    systemFee: 0,
+                    networkFee: 0,
+                    validUntilBlock: 0,
+                    script: ""
+                };
+                return tx.hash;
+            }
+        }
+    "#;
+    parse_source_file(src).expect("parse").type_check().expect("typecheck");
+}
+
+#[test]
+fn rejects_user_struct_shadowing_builtin_transaction() {
+    let src = r#"
+        struct Transaction {
+            int x;
+        }
+        contract C {
+            void m() {}
+        }
+    "#;
+    let ast = parse_source_file(src).expect("parse");
+    let err = ast.type_check().unwrap_err();
+    assert!(err.to_string().contains("Transaction"), "{err}");
 }
 
 #[test]

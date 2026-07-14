@@ -1,0 +1,8 @@
+
+#[hash160("0xfe924b7cfe89ddd271abaf7210a80a7e11178758")]
+declare contract Oracle {
+
+    int getPrice();
+
+    void request(string url, string filter, string callback, any userData, int gasForResponse);
+}

@@ -18,6 +18,24 @@ pub fn parse_source_file(src: &str) -> Result<SourceFile, ParseError> {
     parser.parse_source_file()
 }
 
+pub fn parse_decl_file(src: &str) -> Result<DeclFile, ParseError> {
+    let tokens = lex(src).map_err(|err| ParseError {
+        message: err.message.into(),
+        line: err.line,
+    })?;
+    let mut parser = Parser { tokens, index: 0 };
+    parser.parse_decl_file()
+}
+
+pub fn parse_struct_file(src: &str) -> Result<Vec<StructDecl>, ParseError> {
+    let tokens = lex(src).map_err(|err| ParseError {
+        message: err.message.into(),
+        line: err.line,
+    })?;
+    let mut parser = Parser { tokens, index: 0 };
+    parser.parse_struct_file()
+}
+
 struct Parser {
     tokens: Vec<(usize, Token)>,
     index: usize,
@@ -128,6 +146,71 @@ impl Parser {
         Ok(ImportDecl { name, library })
     }
 
+    fn parse_decl_file(&mut self) -> Result<DeclFile, ParseError> {
+        let mut structs = Vec::new();
+        while matches!(self.current(), Token::Struct) {
+            self.bump();
+            structs.push(self.parse_struct_decl()?);
+        }
+        let mut contracts = Vec::new();
+        while !matches!(self.current(), Token::Eof) {
+            contracts.push(self.parse_extern_contract_decl()?);
+        }
+        if structs.is_empty() && contracts.is_empty() {
+            return Err(self.err("`.d.neo` file must declare at least one struct or contract"));
+        }
+        Ok(DeclFile { structs, contracts })
+    }
+
+    fn parse_struct_file(&mut self) -> Result<Vec<StructDecl>, ParseError> {
+        let mut structs = Vec::new();
+        while !matches!(self.current(), Token::Eof) {
+            if !matches!(self.current(), Token::Struct) {
+                return Err(self.err("struct file may only contain `struct` declarations"));
+            }
+            self.bump();
+            structs.push(self.parse_struct_decl()?);
+        }
+        if structs.is_empty() {
+            return Err(self.err("struct file must declare at least one struct"));
+        }
+        Ok(structs)
+    }
+
+    fn parse_extern_contract_decl(&mut self) -> Result<ExternContractDecl, ParseError> {
+        let attributes = self.parse_attributes_opt()?;
+        self.expect("'declare'", |token| matches!(token, Token::Declare))?;
+        self.expect("'contract'", |token| matches!(token, Token::Contract))?;
+        let name = self.eat_ident()?;
+        self.expect("'{'", |token| matches!(token, Token::LBrace))?;
+        let mut methods = Vec::new();
+        while !matches!(self.current(), Token::RBrace) {
+            methods.push(self.parse_extern_method_decl()?);
+        }
+        self.expect("'}'", |token| matches!(token, Token::RBrace))?;
+        Ok(ExternContractDecl {
+            attributes,
+            name,
+            methods,
+        })
+    }
+
+    fn parse_extern_method_decl(&mut self) -> Result<ExternMethodDecl, ParseError> {
+        let attributes = self.parse_attributes_opt()?;
+        let return_ty = self.parse_type()?;
+        let name = self.eat_ident()?;
+        self.expect("'('", |token| matches!(token, Token::LParen))?;
+        let params = self.parse_param_list()?;
+        self.expect("')'", |token| matches!(token, Token::RParen))?;
+        self.expect("';'", |token| matches!(token, Token::Semi))?;
+        Ok(ExternMethodDecl {
+            attributes,
+            return_ty,
+            name,
+            params,
+        })
+    }
+
     fn parse_struct_decl(&mut self) -> Result<StructDecl, ParseError> {
         let name = self.eat_ident()?;
         self.expect("'{'", |token| matches!(token, Token::LBrace))?;
@@ -175,9 +258,19 @@ impl Parser {
         })
     }
 
+    fn eat_attr_name(&mut self) -> Result<String, ParseError> {
+        let name = match self.bump() {
+            Token::Ident(ident) => ident,
+            Token::Hash160 => "hash160".to_string(),
+            Token::Hash256 => "hash256".to_string(),
+            token => return Err(self.err(format!("expected attribute name, got {token:?}"))),
+        };
+        Ok(name)
+    }
+
     fn parse_attribute(&mut self) -> Result<Attribute, ParseError> {
         self.expect("'#[", |token| matches!(token, Token::AttrOpen))?;
-        let name = self.eat_ident()?;
+        let name = self.eat_attr_name()?;
         let args = if matches!(self.current(), Token::LParen) {
             self.bump();
             let mut args: Vec<String> = Vec::new();
@@ -279,6 +372,14 @@ impl Parser {
         })
     }
 
+    fn eat_param_name(&mut self) -> Result<String, ParseError> {
+        match self.bump() {
+            Token::Ident(ident) => Ok(ident),
+            Token::From => Ok("from".into()),
+            token => Err(self.err(format!("expected parameter name, got {token:?}"))),
+        }
+    }
+
     fn parse_param_list(&mut self) -> Result<Vec<Param>, ParseError> {
         let mut ps = Vec::new();
         if matches!(self.current(), Token::RParen) {
@@ -286,7 +387,7 @@ impl Parser {
         }
         loop {
             let ty = self.parse_type()?;
-            let name = self.eat_ident()?;
+            let name = self.eat_param_name()?;
             ps.push(Param { ty, name });
             if matches!(self.current(), Token::Comma) {
                 self.bump();

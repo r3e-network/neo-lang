@@ -1,0 +1,47 @@
+
+struct NeoAccountState {
+    int balance;
+    int height;
+    string voteTo;
+    int lastGasPerVote;
+}
+
+#[hash160("0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5")]
+declare contract NEO {
+
+    string symbol();
+
+    int decimals();
+    
+    int totalSupply();
+
+    int balanceOf(hash160 account);
+
+    bool transfer(hash160 from, hash160 to, int amount);
+
+    bool transfer(hash160 from, hash160 to, int amount, any data);
+
+    int getGasPerBlock();
+
+    int getRegisterPrice();
+
+    int unclaimedGas(hash160 account, int end);
+
+    bool registerCandidate(hash160 publicKey);
+
+    bool unRegisterCandidate(hash160 publicKey);
+
+    bool vote(hash160 publicKey);
+
+    bool vote(hash160 publicKey, hash160 candidate);
+
+    int getCandidateVote(hash160 publicKey);
+
+    string[] getCommittee();
+
+    hash160 getCommitteeAddress();
+
+    string[] getNextBlockValidators();
+
+    NeoAccountState getAccountState(hash160 account);
+}

@@ -1,0 +1,23 @@
+
+#[hash160("0xfffdc93764dbaddd97c48f252a53ea4643faa3fd")]
+declare contract ContractManagement {
+
+    int getMinimumDeploymentFee();
+
+    // Get the contract by its hash, null if not found.
+    Contract getContract(hash160 hash);
+
+    // Check if the contract exists by its hash.
+    bool isContract(hash160 hash);
+
+    // Get the contract by its id, null if not found.
+    Contract getContractById(int id);
+
+    bool hasMethod(hash160 hash, string method, int argCount);
+
+    Contract deploy(string nefFile, string manifest, any data);
+
+    void update(string nefFile, string manifest, any data);
+
+    void destroy();
+}

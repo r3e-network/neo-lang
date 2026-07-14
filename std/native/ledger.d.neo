@@ -1,0 +1,24 @@
+
+#[hash160("0xda65b600f7124ce6c79950c1772a36403104f2be")]
+declare contract Ledger {
+
+    hash256 currentHash();
+
+    int currentIndex();
+
+    Block getBlock(int blockIndex);
+
+    // Block getBlock(hash256 blockHash);
+
+    Transaction getTransaction(hash256 txHash);
+
+    // Transaction getTransactionFromBlock(hash256 blockHash, int txIndex);
+
+    Transaction getTransactionFromBlock(int blockIndex, int txIndex);
+
+    // Signer[] getTransactionSigners(hash256 txHash);
+
+    int getTransactionHeight(hash256 txHash);
+
+    int getTransactionVMState(hash256 txHash);
+}

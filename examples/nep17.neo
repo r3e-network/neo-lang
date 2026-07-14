@@ -12,27 +12,27 @@ contract NEP17 {
 
     map[hash160, int] _balances;
 
-    event transfer(hash160 source, hash160 dest, int amount);
+    event transfer(hash160 sender, hash160 to, int amount);
 
     int balanceOf(hash160 owner) {
         return self._balances[owner];
     }
 
-    bool transfer(hash160 source, hash160 dest, int amount) {
+    bool transfer(hash160 sender, hash160 to, int amount) {
         assert(amount >= 0, "invalid amount");
 
-        if !runtime.checkWitness(source) {
+        if !runtime.checkWitness(sender) {
             return false;
         }
 
         if amount > 0 {
-            if !self._updateBalance(source, -amount) {
+            if !self._updateBalance(sender, -amount) {
                 return false;
             }
-            self._updateBalance(dest, amount);
+            self._updateBalance(to, amount);
         }
 
-        self._postTransfer(source, dest, amount);
+        self._postTransfer(sender, to, amount);
         return true;
     }
 
@@ -61,10 +61,10 @@ contract NEP17 {
         return true;
     }
 
-    void _postTransfer(hash160 source, hash160 dest, int amount) {
-        emit transfer(source, dest, amount);
-        if (dest != null && ContractManagement.isContract(dest)) {
-            runtime.call(dest, "onNEP17Payment", any[]{source, amount, null});
+    void _postTransfer(hash160 sender, hash160 to, int amount) {
+        emit transfer(sender, to, amount);
+        if (to != null && ContractManagement.isContract(to)) {
+            runtime.call(to, "onNEP17Payment", any[]{sender, amount, null});
         }
     }
 

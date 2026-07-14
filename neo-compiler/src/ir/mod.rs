@@ -8,9 +8,9 @@ pub mod opt;
 
 use std::collections::BTreeMap;
 
+use crate::natives::ExternContract;
 use crate::syntax::ast::*;
 use crate::target::builtin::BuiltinMethod;
-use crate::target::natives::NativeContract;
 use crate::target::syscall::RuntimeMethod;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -232,9 +232,9 @@ pub enum Instr {
         method: RuntimeMethod,
         args: Vec<ValueRef>,
     },
-    /// `NativeContract.method(args...)` via NEF method token + [`OpCode::CALLT`].
-    NativeCall {
-        contract: &'static NativeContract,
+    /// `ExternContract.method(args...)` via NEF method token + [`OpCode::CALLT`].
+    ExternCall {
+        contract: &'static ExternContract,
         method: String,
         args: Vec<ValueRef>,
     },
@@ -269,7 +269,7 @@ impl Instr {
             | Instr::ContractMethodCall { .. }
             | Instr::StructCall { .. }
             | Instr::RuntimeCall { .. }
-            | Instr::NativeCall { .. }
+            | Instr::ExternCall { .. }
             | Instr::EvalAst(_) => true,
             _ => false,
         }
@@ -300,7 +300,7 @@ impl Instr {
             | Instr::StructPack { .. }
             | Instr::StructCall { .. }
             | Instr::RuntimeCall { .. }
-            | Instr::NativeCall { .. } => true,
+            | Instr::ExternCall { .. } => true,
             _ => false,
         }
     }

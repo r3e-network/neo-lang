@@ -15,7 +15,6 @@
 pub mod builtin;
 pub mod cost;
 pub mod method_token;
-pub mod natives;
 pub mod nef;
 pub mod opcode;
 pub mod syscall;

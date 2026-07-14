@@ -1,0 +1,140 @@
+
+struct Transaction {
+    hash256 hash;
+    int version;
+    int nonce;
+    hash160 sender;
+    int systemFee;
+    int networkFee;
+    int validUntilBlock;
+    string script;
+}
+
+struct Block {
+    hash256 hash;
+    int version;
+    hash256 prevHash;
+    hash256 merkleRoot;
+    int timestamp;
+    int nonce;
+    int index;
+    int primaryIndex;
+    hash160 nextConsensus;
+    int transactionsCount;
+}
+
+struct ContractPermission {
+    // Indicates which contracts to be invoked.
+    // It can be a hash of a contract, a public key of a group, or a wildcard *.
+    string contracts;
+
+    // It can also be assigned with a wildcard *. If it is a wildcard *,
+    string[] methods;
+ }
+
+struct ContractParameter {
+    string name;
+    int type;
+}
+
+struct ContractEventDescriptor {
+    string name;
+    ContractParameter[] parameters;
+}
+
+struct ContractMethodDescriptor {
+    string name;
+    ContractParameter[] parameters;
+    int returnType;
+    int offset;
+    bool safe;
+}
+
+struct ContractAbi {
+    ContractMethodDescriptor[] methods;
+    ContractEventDescriptor[] events;
+}
+
+struct ContractGroup {
+    string publicKey;
+    string signature;
+}
+
+struct ContractManifest {
+    string name;
+    ContractGroup[] groups;
+    any _reserved;
+    string[] supportedStandards;
+    ContractAbi abi;
+    ContractPermission[] permissions;
+    string[] trusts;
+    string extra;
+}
+
+struct Contract {
+    int id;
+    int updateCounter;
+    h160 hash;
+    string nef;
+    ContractManifest manifest;
+}
+
+struct Signer {
+    hash160   account;
+    int       scopes;  // Witness Scopes
+    hash160[] allowedContracts;
+    string[]  allowedGroups;
+}
+
+struct WitnessRule {
+    // 0: deny, 1: allow
+    int action;
+
+    // One of BoolCondition, NotCondition, AndCondition, OrCondition, ScriptHashCondition, GroupCondition,
+    // CalledByEntryCondition, CalledByContractCondition, CalledByGroupCondition
+    any condition;
+}
+
+struct BoolCondition {
+    int type; // Always 0x00
+    WitnessCondition expression;
+}
+
+struct NotCondition {
+    int type; // Always 0x01
+    WitnessCondition expression;
+}
+
+struct AndCondition {
+    int type; // Always 0x02
+    WitnessCondition[] expressions;
+}
+
+struct OrCondition {
+    int type; // Always 0x03
+    WitnessCondition[] expressions;
+}
+
+struct ScriptHashCondition {
+    int type; // Always 0x18
+    hash160 hash;
+}
+
+struct GroupCondition {
+    int type; // Always 0x19
+    string group; // ECPoint
+}
+
+struct CalledByEntryCondition {
+    int type; // Always 0x20
+}
+
+struct CalledByContractCondition {
+    int type; // Always 0x28
+    hash160 hash;
+}
+
+struct CalledByGroupCondition {
+    int type; // Always 0x29
+    string group; // ECPoint
+}

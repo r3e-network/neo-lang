@@ -135,7 +135,7 @@ impl Instr {
                     bump(*arg, out);
                 }
             }
-            Instr::NativeCall { args, .. } => {
+            Instr::ExternCall { args, .. } => {
                 for arg in args {
                     bump(*arg, out);
                 }
@@ -298,7 +298,7 @@ impl Instr {
                     bump(use_bb, *arg, def_block, out);
                 }
             }
-            Instr::NativeCall { args, .. } => {
+            Instr::ExternCall { args, .. } => {
                 for arg in args {
                     bump(use_bb, *arg, def_block, out);
                 }

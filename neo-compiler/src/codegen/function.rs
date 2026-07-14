@@ -13,6 +13,7 @@ use crate::codegen::expr::stack_effect::{expr_stmt_leaves_stack_value, CallStack
 use crate::codegen::expr::ExprGen;
 use crate::codegen::CodegenError;
 use crate::ir;
+use crate::natives::native_contract_by_name;
 use crate::syntax::ast::*;
 use crate::target::method_token::MethodTokenRegistry;
 use crate::target::opcode::OpCode;
@@ -123,8 +124,8 @@ impl<'a> FunctionCompiler<'a> {
             Stmt::Var { name, init } => {
                 let slot = self.env.declare_local(name)?;
                 if let Some(expr) = init {
-                    if let Expr::StructLit { name: sn, .. } = expr {
-                        self.value_struct.insert(name.clone(), sn.clone());
+                    if let Some(struct_name) = struct_name_from_init_expr(expr, self.ctx.structs) {
+                        self.value_struct.insert(name.clone(), struct_name);
                     }
                     self.compile_expr(expr)?;
                 } else {
@@ -408,5 +409,32 @@ pub fn lower_struct_method(struct_name: &str, method: &FunctionDecl) -> Function
         name: format!("{struct_name}::{}", method.name),
         params,
         body: method.body.clone(),
+    }
+}
+
+fn is_known_struct(structs: &[StructDecl], name: &str) -> bool {
+    structs.iter().any(|s| s.name == name)
+}
+
+fn struct_name_from_init_expr(expr: &Expr, structs: &[StructDecl]) -> Option<String> {
+    match expr {
+        Expr::StructLit { name, .. } => Some(name.clone()),
+        Expr::Call { callee, args } => {
+            let Expr::Member { base, field } = callee.as_ref() else {
+                return None;
+            };
+            let Expr::Ident(pkg) = base.as_ref() else {
+                return None;
+            };
+            let contract = native_contract_by_name(pkg)?;
+            let ret = contract.infer_return_type(field, args.len());
+            if let Type::Named(sn) = ret {
+                if is_known_struct(structs, &sn) {
+                    return Some(sn);
+                }
+            }
+            None
+        }
+        _ => None,
     }
 }

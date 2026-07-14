@@ -641,7 +641,7 @@ fn collect_uses_in_instr(instr: &Instr, out: &mut VecDeque<ValueId>) {
                 }
             }
         }
-        Instr::NativeCall { args, .. } => {
+        Instr::ExternCall { args, .. } => {
             for arg in args {
                 if let ValueRef::Value(x) = arg {
                     out.push_back(*x);
@@ -832,7 +832,7 @@ fn rewrite_value_refs_in_instr(instr: &mut Instr, subst: &HashMap<ValueId, Value
                 *arg = rewrite(*arg, subst);
             }
         }
-        Instr::NativeCall { args, .. } => {
+        Instr::ExternCall { args, .. } => {
             for arg in args {
                 *arg = rewrite(*arg, subst);
             }

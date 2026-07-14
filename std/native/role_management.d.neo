@@ -1,0 +1,6 @@
+
+#[hash160("0x49cf4e5378ffcd4dec034fd98a174c5491e395e2")]
+declare contract RoleManagement {
+
+    string[] getDesignatedByRole(int role, int index);
+}

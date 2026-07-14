@@ -2,6 +2,8 @@
 
 pub mod codegen;
 pub mod ir;
+pub mod natives;
+pub mod stdlib;
 pub mod syntax;
 pub mod target;
 pub mod typecheck;

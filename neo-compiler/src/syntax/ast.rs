@@ -15,6 +15,30 @@ pub struct ImportDecl {
     pub library: String,
 }
 
+/// A `.d.neo` declaration file (external contract ABI, no method bodies).
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeclFile {
+    pub structs: Vec<StructDecl>,
+    pub contracts: Vec<ExternContractDecl>,
+}
+
+/// External contract declared in a `.d.neo` file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternContractDecl {
+    pub attributes: Vec<Attribute>,
+    pub name: String,
+    pub methods: Vec<ExternMethodDecl>,
+}
+
+/// Method signature in a `.d.neo` file (no body).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternMethodDecl {
+    pub attributes: Vec<Attribute>,
+    pub return_ty: Type,
+    pub name: String,
+    pub params: Vec<Param>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContractDecl {
     pub attributes: Vec<Attribute>,

@@ -9,9 +9,10 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
+use crate::natives::{native_contract_by_name, lang_type_assignable_to, ExternContract};
+use crate::stdlib::StructScope;
 use crate::syntax::ast::*;
 use crate::target::builtin::BuiltinMethod;
-use crate::target::natives::{native_contract_by_name, NativeContract};
 use crate::target::syscall::RuntimeMethod;
 
 #[derive(Debug, Error)]
@@ -27,16 +28,19 @@ fn err(s: impl std::fmt::Display) -> TypeError {
 
 impl SourceFile {
     pub(crate) fn type_check(&self) -> Result<(), TypeError> {
-        let mut structs: HashMap<String, &StructDecl> = HashMap::new();
+        let mut seen_user_structs = HashMap::new();
         for struct_decl in &self.structs {
-            if structs
-                .insert(struct_decl.name.clone(), struct_decl)
+            if seen_user_structs
+                .insert(struct_decl.name.clone(), ())
                 .is_some()
             {
                 return Err(err(format!("duplicate struct `{}`", struct_decl.name)));
             }
         }
 
+        let struct_scope =
+            StructScope::from_source_structs(&self.structs).map_err(|e| err(e.to_string()))?;
+        let structs = struct_scope.index();
         let mut package_fns: HashMap<String, &FunctionDecl> = HashMap::new();
         for func in &self.functions {
             if package_fns.insert(func.name.clone(), func).is_some() {
@@ -303,6 +307,10 @@ impl<'a> TypeCheckContext<'a> {
                     } = expr
                     {
                         env.value_struct.insert(name.clone(), struct_name.clone());
+                    } else if let Type::Named(struct_name) = &ty {
+                        if self.structs.contains_key(struct_name) {
+                            env.value_struct.insert(name.clone(), struct_name.clone());
+                        }
                     }
                     ty
                 } else {
@@ -672,7 +680,7 @@ impl<'a> TypeCheckContext<'a> {
                 .or(struct_field.init.as_ref());
             if let Some(expr) = init {
                 let ty = self.infer_expr(env, expr)?;
-                if !ty.can_assign_to(&struct_field.ty) {
+                if !lang_type_assignable_to(&ty, &struct_field.ty) {
                     return Err(err(format!(
                         "field `{}` type mismatch: expected `{:?}`, got `{ty:?}`",
                         struct_field.name, struct_field.ty
@@ -914,7 +922,7 @@ impl<'a> TypeCheckContext<'a> {
                     return self.check_runtime_call(field, args, env);
                 }
                 if let Some(contract) = native_contract_by_name(pkg) {
-                    return self.check_native_contract_call(contract, field, args, env);
+                    return self.check_extern_contract_call(contract, field, args, env);
                 }
             }
             if matches!(base.as_ref(), Expr::Self_) && env.is_contract_fn {
@@ -983,7 +991,7 @@ impl<'a> TypeCheckContext<'a> {
         }
 
         Err(err(
-            "only package-level functions, built-in functions, native contracts, struct methods, and runtime.* calls are supported",
+            "only package-level functions, built-in functions, external contracts, struct methods, and runtime.* calls are supported",
         ))
     }
 
@@ -1211,32 +1219,32 @@ impl<'a> TypeCheckContext<'a> {
         Ok(Some(builtin.return_lang_type()))
     }
 
-    fn check_native_contract_call(
+    fn check_extern_contract_call(
         &self,
-        contract: &NativeContract,
+        contract: &ExternContract,
         method: &str,
         args: &[Expr],
         env: &mut FnEnv,
     ) -> Result<Type, TypeError> {
-        let Some(native_method) = contract.resolve_method(method, args.len()) else {
+        let Some(extern_method) = contract.resolve_method(method, args.len()) else {
             return Err(err(format!(
-                "{}.{method} is not a known native contract method with {} argument(s)",
+                "{}.{method} is not a known external contract method with {} argument(s)",
                 contract.name,
                 args.len()
             )));
         };
         for (index, arg) in args.iter().enumerate() {
             let ty = self.infer_expr(env, arg)?;
-            if !native_method.arg_type_matches(index, &ty) {
+            if !extern_method.arg_type_matches(index, &ty) {
                 return Err(err(format!(
                     "{}.{method} argument {} type mismatch: expected `{:?}`, got `{ty:?}`",
                     contract.name,
                     index + 1,
-                    native_method.args[index],
+                    extern_method.params[index].0,
                 )));
             }
         }
-        Ok(native_method.return_lang_type())
+        Ok(extern_method.return_ty.clone())
     }
 
     fn check_runtime_call(

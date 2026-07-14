@@ -1,7 +1,7 @@
 use crate::codegen::context::FnSig;
 use crate::syntax::ast::{Expr, Type};
 use crate::target::builtin::BuiltinMethod;
-use crate::target::natives::native_contract_by_name;
+use crate::natives::native_contract_by_name;
 use crate::target::syscall::RuntimeMethod;
 
 use std::collections::HashMap;
@@ -37,7 +37,7 @@ fn call_leaves_stack_value(
                     return runtime_call_leaves_stack_value(field);
                 }
                 if let Some(contract) = native_contract_by_name(pkg) {
-                    return native_call_leaves_stack_value(contract, field, args.len());
+                    return extern_call_leaves_stack_value(contract, field, args.len());
                 }
             }
             if matches!(base.as_ref(), Expr::Self_) {
@@ -77,8 +77,8 @@ fn self_map_method_leaves_stack_value(method: &str) -> bool {
     }
 }
 
-fn native_call_leaves_stack_value(
-    contract: &crate::target::natives::NativeContract,
+fn extern_call_leaves_stack_value(
+    contract: &crate::natives::ExternContract,
     method: &str,
     arg_count: usize,
 ) -> bool {
