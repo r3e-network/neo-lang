@@ -95,6 +95,10 @@ struct WitnessRule {
     any condition;
 }
 
+struct Condition {
+    int type;
+}
+
 struct BoolCondition {
     int type; // Always 0x00
     WitnessCondition expression;

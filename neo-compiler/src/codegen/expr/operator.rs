@@ -36,11 +36,7 @@ impl ExprGen<'_, '_> {
                 Ok(())
             }
             BinaryOp::Eq | BinaryOp::Ne if left.is_null_literal() || right.is_null_literal() => {
-                let value = if left.is_null_literal() {
-                    right
-                } else {
-                    left
-                };
+                let value = if left.is_null_literal() { right } else { left };
                 self.compile_expr(value)?;
                 self.builder.emit(OpCode::ISNULL);
                 if matches!(op, BinaryOp::Ne) {

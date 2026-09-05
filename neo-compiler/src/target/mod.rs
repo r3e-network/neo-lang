@@ -60,7 +60,10 @@ impl StackItemType {
             StackItemType::Integer => matches!(ty, Type::Int),
             StackItemType::ByteString => matches!(ty, Type::String | Type::Hash160 | Type::Hash256),
             // Source often passes string literals where syscall metadata says `Buffer` (e.g. `runtime.log`).
-            StackItemType::Buffer => matches!(ty, Type::Buffer | Type::String | Type::Hash160 | Type::Hash256),
+            StackItemType::Buffer => matches!(
+                ty,
+                Type::Buffer | Type::String | Type::Hash160 | Type::Hash256
+            ),
             StackItemType::Array => matches!(ty, Type::Array(_) | Type::Any),
             StackItemType::Map => matches!(ty, Type::Map { .. } | Type::Any),
             StackItemType::Any => true,

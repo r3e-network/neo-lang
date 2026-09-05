@@ -1,6 +1,6 @@
 use crate::codegen::CodegenError;
-use crate::syntax::ast::{Expr, Type};
 use crate::natives::{native_contract_by_name, ExternContract};
+use crate::syntax::ast::{Expr, Type};
 use crate::target::nef::MethodToken;
 
 use super::ExprGen;

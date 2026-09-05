@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
-use crate::natives::{native_contract_by_name, lang_type_assignable_to, ExternContract};
+use crate::natives::{lang_type_assignable_to, native_contract_by_name, ExternContract};
 use crate::stdlib::StructScope;
 use crate::syntax::ast::*;
 use crate::target::builtin::BuiltinMethod;

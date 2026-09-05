@@ -42,7 +42,10 @@ fn accepts_simple_contract_self_method_call() {
             bool m(int x) { return self.helper(x); }
         }
     "#;
-    parse_source_file(src).expect("parse").type_check().expect("typecheck");
+    parse_source_file(src)
+        .expect("parse")
+        .type_check()
+        .expect("typecheck");
 }
 
 #[test]
@@ -56,7 +59,10 @@ fn accepts_contract_self_method_call_in_if_condition() {
             }
         }
     "#;
-    parse_source_file(src).expect("parse").type_check().expect("typecheck");
+    parse_source_file(src)
+        .expect("parse")
+        .type_check()
+        .expect("typecheck");
 }
 
 #[test]
@@ -69,7 +75,10 @@ fn accepts_contract_map_index_in_method() {
             }
         }
     "#;
-    parse_source_file(src).expect("parse").type_check().expect("typecheck");
+    parse_source_file(src)
+        .expect("parse")
+        .type_check()
+        .expect("typecheck");
 }
 
 #[test]
@@ -105,7 +114,10 @@ fn accepts_any_array_literal_with_mixed_element_types() {
             }
         }
     "#;
-    parse_source_file(src).expect("parse").type_check().expect("typecheck");
+    parse_source_file(src)
+        .expect("parse")
+        .type_check()
+        .expect("typecheck");
 }
 
 #[test]
@@ -117,7 +129,10 @@ fn accepts_native_contract_call() {
             }
         }
     "#;
-    parse_source_file(src).expect("parse").type_check().expect("typecheck");
+    parse_source_file(src)
+        .expect("parse")
+        .type_check()
+        .expect("typecheck");
 }
 
 #[test]
@@ -129,7 +144,10 @@ fn accepts_stdlib_native_call() {
             }
         }
     "#;
-    parse_source_file(src).expect("parse").type_check().expect("typecheck");
+    parse_source_file(src)
+        .expect("parse")
+        .type_check()
+        .expect("typecheck");
 }
 
 #[test]
@@ -151,7 +169,10 @@ fn accepts_builtin_transaction_struct_literal_and_member() {
             }
         }
     "#;
-    parse_source_file(src).expect("parse").type_check().expect("typecheck");
+    parse_source_file(src)
+        .expect("parse")
+        .type_check()
+        .expect("typecheck");
 }
 
 #[test]

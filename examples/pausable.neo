@@ -1,0 +1,17 @@
+
+#[author("AuthorName")]
+#[version("0.0.1")]
+#[description("This is a simple pausable contract.")]
+contract Pausable {
+    bool _paused = false;
+
+    // Pauses the contract. Has no access control; wrap it behind an authorization check.
+    void pause() {
+        self._paused = true;
+    }
+
+    // Pauses the contract. Has no access control; wrap it behind an authorization check.
+    void unpause() {
+        self._paused = false;
+    }
+}

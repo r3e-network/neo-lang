@@ -105,12 +105,10 @@ fn codegen_contract_without_methods_emits_field_getters() {
     let out = Codegen::new().codegen_source_file(&sf).unwrap();
     assert!(out.package_functions.is_empty());
     assert!(out.struct_methods.is_empty());
-    assert_eq!(out.contract_methods.len(), 1);
+    assert_eq!(out.contract_methods.len(), 2);
     assert_eq!(out.contract_methods[0].name, "x");
-    assert_eq!(
-        out.contract_methods[0].contract.as_deref(),
-        Some("X")
-    );
+    assert_eq!(out.contract_methods[1].name, "_initialize");
+    assert_eq!(out.contract_methods[0].contract.as_deref(), Some("X"));
 }
 
 #[test]
@@ -125,10 +123,21 @@ fn codegen_contract_field_getters_for_const_and_mutable() {
     "#;
     let sf = parse_source_file(src).unwrap();
     let out = Codegen::new().codegen_source_file(&sf).unwrap();
-    let names: Vec<_> = out.contract_methods.iter().map(|m| m.name.as_str()).collect();
-    assert_eq!(names, vec!["symbol", "decimals", "totalSupply"]);
+    let names: Vec<_> = out
+        .contract_methods
+        .iter()
+        .map(|m| m.name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["symbol", "decimals", "totalSupply", "_initialize"]
+    );
 
-    let symbol = out.contract_methods.iter().find(|m| m.name == "symbol").unwrap();
+    let symbol = out
+        .contract_methods
+        .iter()
+        .find(|m| m.name == "symbol")
+        .unwrap();
     assert!(
         symbol
             .instructions
@@ -156,6 +165,128 @@ fn codegen_contract_field_getters_for_const_and_mutable() {
             .any(|i| i.opcode == OpCode::SYSCALL),
         "mutable getter should load from storage"
     );
+
+    let init = out
+        .contract_methods
+        .iter()
+        .find(|m| m.name == "_initialize")
+        .expect("_initialize");
+    assert_eq!(init.contract.as_deref(), Some("C"));
+    assert_eq!(
+        init.instructions
+            .iter()
+            .filter(|i| i.opcode == OpCode::SYSCALL)
+            .count(),
+        1,
+        "only explicit `totalSupply` should be written; empty map is already empty storage"
+    );
+}
+
+#[test]
+fn codegen_generates_initialize_for_explicit_and_default_scalars() {
+    let src = r#"
+        contract C {
+            int totalSupply = 1000;
+            string owner;
+            bool paused;
+        }
+    "#;
+    let sf = parse_source_file(src).unwrap();
+    let out = Codegen::new().codegen_source_file(&sf).unwrap();
+    let init = out
+        .contract_methods
+        .iter()
+        .find(|m| m.name == "_initialize")
+        .expect("_initialize");
+    assert_eq!(
+        init.instructions
+            .iter()
+            .filter(|i| i.opcode == OpCode::SYSCALL)
+            .count(),
+        3,
+        "expected one storage put for each mutable scalar field"
+    );
+}
+
+#[test]
+fn codegen_generates_initialize_for_hash_and_constant_references() {
+    let src = r#"
+        contract C {
+            const int decimals = 8;
+            int supplyScale = decimals + 1;
+            hash160 owner = "0x1234567890abcdef1234567890abcdef12345678";
+        }
+    "#;
+    let sf = parse_source_file(src).unwrap();
+    let out = Codegen::new().codegen_source_file(&sf).unwrap();
+    let init = out
+        .contract_methods
+        .iter()
+        .find(|m| m.name == "_initialize")
+        .expect("_initialize");
+    assert_eq!(
+        init.instructions
+            .iter()
+            .filter(|i| i.opcode == OpCode::SYSCALL)
+            .count(),
+        2,
+        "expected writes for `supplyScale` and `owner`"
+    );
+}
+
+#[test]
+fn codegen_map_initializer_expands_to_per_key_writes() {
+    let src = r#"
+        contract C {
+            map[string, int] counters = map[string, int] {
+                "a": 1,
+                "b": 2
+            };
+        }
+    "#;
+    let sf = parse_source_file(src).unwrap();
+    let out = Codegen::new().codegen_source_file(&sf).unwrap();
+    let init = out
+        .contract_methods
+        .iter()
+        .find(|m| m.name == "_initialize")
+        .expect("_initialize");
+    assert_eq!(
+        init.instructions
+            .iter()
+            .filter(|i| i.opcode == OpCode::SYSCALL)
+            .count(),
+        2,
+        "expected one storage put per map entry"
+    );
+}
+
+#[test]
+fn codegen_rejects_user_defined_initialize() {
+    let src = r#"
+        contract C {
+            int x;
+            void _initialize() { }
+        }
+    "#;
+    let sf = parse_source_file(src).unwrap();
+    let err = Codegen::new().codegen_source_file(&sf).unwrap_err();
+    assert!(
+        err.to_string().contains("`_initialize` is reserved"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn codegen_rejects_non_constant_field_initializer() {
+    let src = r#"
+        contract C {
+            int x = unknownConstant;
+        }
+    "#;
+    let sf = parse_source_file(src).unwrap();
+    let err = Codegen::new().codegen_source_file(&sf).unwrap_err();
+    assert!(err.to_string().contains("constant"), "got: {err}");
 }
 
 #[test]
@@ -781,8 +912,7 @@ fn emit_statement_uses_runtime_notify() {
     let sf = parse_source_file(src).expect("parse source file should not fail");
     let fns = HashMap::new();
     let ctx = FunctionCompileContext::new(&[], &fns);
-    let compiled =
-        compile_fn(&sf.functions[0], &ctx).expect("compile function should not fail");
+    let compiled = compile_fn(&sf.functions[0], &ctx).expect("compile function should not fail");
     let inst = compiled.instructions;
     assert!(inst.iter().any(|i| i.opcode == OpCode::PACK));
     assert!(inst.iter().any(|i| i.opcode == OpCode::SYSCALL
@@ -834,8 +964,7 @@ fn struct_literal_and_member_pickitem() {
     let structs = &sf.structs;
     let fns = HashMap::new();
     let ctx = FunctionCompileContext::new(structs, &fns);
-    let compiled =
-        compile_fn(&sf.functions[0], &ctx).expect("compile function should not fail");
+    let compiled = compile_fn(&sf.functions[0], &ctx).expect("compile function should not fail");
     let instructions = compiled.instructions;
     assert!(instructions.iter().any(|i| i.opcode == OpCode::PACK));
     let mut pick = 0u32;

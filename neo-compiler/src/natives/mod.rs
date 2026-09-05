@@ -6,7 +6,7 @@
 mod load;
 
 pub use load::{
-    native_contract_by_name, lang_type_assignable_to, load_decl_file, parse_hash160_hex,
+    lang_type_assignable_to, load_decl_file, native_contract_by_name, parse_hash160_hex,
     ExternContract, ExternContractError, ExternMethod,
 };
 

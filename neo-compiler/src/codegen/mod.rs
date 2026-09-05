@@ -56,6 +56,7 @@ pub mod env;
 pub mod expr;
 pub mod field;
 pub mod function;
+pub mod initializer;
 pub mod ir_codegen;
 pub mod opt;
 
@@ -67,11 +68,12 @@ use std::collections::HashMap;
 use crate::codegen::context::{FnSig, FunctionCompileContext};
 use crate::codegen::field::field_getter_specs;
 use crate::codegen::function::{compile_function, lower_struct_method};
+use crate::codegen::initializer::synthesize_initializer;
 use crate::codegen::opt::Optimizer;
 use crate::stdlib::StructScope;
 use crate::syntax::ast::*;
-use crate::target::opcode::OpCode;
 use crate::target::method_token::{MethodTokenError, MethodTokenRegistry};
+use crate::target::opcode::OpCode;
 use crate::target::Instruction;
 use crate::typecheck;
 
@@ -241,6 +243,13 @@ impl Codegen {
         &mut self,
         source: &SourceFile,
     ) -> Result<CompiledSourceFile, CodegenError> {
+        let mut source = source.clone();
+        if let Some(contract) = &mut source.contract {
+            if let Some(initializer) = synthesize_initializer(contract)? {
+                contract.members.push(ContractMember::Function(initializer));
+            }
+        }
+
         source.type_check()?;
         let struct_scope = StructScope::from_source_structs(&source.structs)
             .map_err(|e| CodegenError::Unsupported(e.to_string()))?;
@@ -328,11 +337,7 @@ impl Codegen {
                 contract_fns.insert(spec.func.name.clone(), FnSig::from_function(&spec.func));
             }
             let contract_ctx = FunctionCompileContext::new(all_structs, &package_fns)
-                .with_contract(
-                    contract_decl.name.as_str(),
-                    storage_fields,
-                    &contract_fns,
-                );
+                .with_contract(contract_decl.name.as_str(), storage_fields, &contract_fns);
             for spec in &getter_specs {
                 let compiled =
                     compile_function(&spec.func, &contract_ctx, &mut self.method_tokens)?;
@@ -345,7 +350,8 @@ impl Codegen {
             }
             for member in &contract_decl.members {
                 if let ContractMember::Function(method) = member {
-                    let compiled = compile_function(method, &contract_ctx, &mut self.method_tokens)?;
+                    let compiled =
+                        compile_function(method, &contract_ctx, &mut self.method_tokens)?;
                     contract_methods.push(CompiledFunction {
                         name: method.name.clone(),
                         contract: Some(contract_decl.name.clone()),

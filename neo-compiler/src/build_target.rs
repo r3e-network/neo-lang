@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fs;
 
 use crate::codegen::field::field_getter_specs;
+use crate::codegen::initializer::synthesize_initializer;
 use crate::codegen::{Codegen, CompiledSourceFile};
 use crate::syntax::ast::*;
 use crate::syntax::parser;
@@ -190,6 +191,19 @@ fn build_manifest(ast: &SourceFile, compiled: &CompiledSourceFile) -> Result<Man
         }
     }
 
+    if let Some(initializer) = synthesize_initializer(contract).map_err(|e| e.to_string())? {
+        let offset = *contract_method_offset
+            .get(&initializer.name)
+            .ok_or_else(|| "no compiled offset for generated `_initialize` method".to_string())?;
+        methods.push(ContractMethod {
+            name: initializer.name,
+            parameters: vec![],
+            return_type: manifest_type_name(&initializer.return_ty),
+            offset,
+            safe: false,
+        });
+    }
+
     Ok(Manifest {
         name: contract.name.clone(),
         groups: vec![],
@@ -219,4 +233,30 @@ fn manifest_type_name(ty: &Type) -> String {
         Type::Map { .. } => "Map",
     }
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::codegen::Codegen;
+    use crate::syntax::parser::parse_source_file;
+
+    #[test]
+    fn manifest_includes_generated_initialize() {
+        let ast = parse_source_file("contract C { int x = 1; }").unwrap();
+        let compiled = Codegen::new().codegen_source_file(&ast).unwrap();
+        let manifest = build_manifest(&ast, &compiled).unwrap();
+        let init = manifest
+            .abi
+            .methods
+            .iter()
+            .find(|m| m.name == "_initialize")
+            .expect("manifest should include generated `_initialize`");
+        assert_eq!(init.return_type, "Void");
+        assert!(init.parameters.is_empty());
+        assert!(!init.safe);
+
+        let script_len = compiled.flatten_to_bytes().len() as u32;
+        assert!(init.offset < script_len);
+    }
 }

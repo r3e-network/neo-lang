@@ -1,4 +1,4 @@
-use super::{native_contract_by_name, load_decl_file, parse_hash160_hex};
+use super::{load_decl_file, native_contract_by_name, parse_hash160_hex};
 use crate::syntax::ast::Type;
 
 #[test]
@@ -47,7 +47,10 @@ fn load_user_decl_file_with_struct_return_type() {
     "#;
     let contracts = load_decl_file(src).unwrap();
     assert_eq!(contracts.len(), 1);
-    assert_eq!(contracts[0].methods[0].return_ty, Type::Named("Transaction".into()));
+    assert_eq!(
+        contracts[0].methods[0].return_ty,
+        Type::Named("Transaction".into())
+    );
 }
 
 #[test]

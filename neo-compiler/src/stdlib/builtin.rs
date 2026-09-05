@@ -25,19 +25,19 @@ impl From<ParseError> for StructScopeError {
 
 static BUILTIN_STRUCTS: OnceLock<Vec<StructDecl>> = OnceLock::new();
 
-const BUILTIN_STRUCT_SOURCES: &[(&str, &str)] = &[(
-    "builtin",
-    include_str!("../../../std/builtin.neo"),
-)];
+const BUILTIN_STRUCT_SOURCES: &[(&str, &str)] =
+    &[("builtin", include_str!("../../../std/builtin.neo"))];
 
 fn load_builtin_structs() -> Vec<StructDecl> {
     let mut structs = Vec::new();
     for (label, src) in BUILTIN_STRUCT_SOURCES {
-        let loaded = parse_struct_file(src).unwrap_or_else(|e| {
-            panic!("failed to load built-in struct `{label}`: {e:?}")
-        });
+        let loaded = parse_struct_file(src)
+            .unwrap_or_else(|e| panic!("failed to load built-in struct `{label}`: {e:?}"));
         for s in loaded {
-            if structs.iter().any(|existing: &StructDecl| existing.name == s.name) {
+            if structs
+                .iter()
+                .any(|existing: &StructDecl| existing.name == s.name)
+            {
                 panic!("duplicate built-in struct `{}` in `{label}`", s.name);
             }
             structs.push(s);
@@ -91,10 +91,7 @@ impl StructScope {
     }
 
     pub fn index(&self) -> HashMap<String, &StructDecl> {
-        self.merged
-            .iter()
-            .map(|s| (s.name.clone(), s))
-            .collect()
+        self.merged.iter().map(|s| (s.name.clone(), s)).collect()
     }
 
     pub fn is_struct_type(&self, name: &str) -> bool {

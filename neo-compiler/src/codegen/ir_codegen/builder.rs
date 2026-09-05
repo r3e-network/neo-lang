@@ -5,8 +5,8 @@ use crate::codegen::CodegenError;
 use crate::ir::*;
 use crate::syntax::ast::{AssignOp, BinaryOp, Literal, Type, UnaryOp};
 use crate::target::builtin::{BuiltinEmitStep, BuiltinMethod};
-use crate::target::opcode::{OpCode, ToOpCode};
 use crate::target::nef::MethodToken;
+use crate::target::opcode::{OpCode, ToOpCode};
 use crate::target::syscall::{RuntimeEmitStep, Syscall};
 use crate::target::{Builder, StackItemType};
 

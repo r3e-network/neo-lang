@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use crate::codegen::env::*;
 use crate::codegen::CodegenError;
 use crate::syntax::ast::*;
-use crate::target::opcode::OpCode;
 use crate::target::method_token::MethodTokenRegistry;
+use crate::target::opcode::OpCode;
 use crate::target::{Builder, StackItemType};
 pub(crate) use literal::parse_int_literal;
 
