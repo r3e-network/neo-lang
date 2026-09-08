@@ -117,11 +117,7 @@ mod tests {
 
     #[test]
     fn user_struct_cannot_shadow_builtin() {
-        let user = vec![StructDecl {
-            name: "Transaction".into(),
-            fields: vec![],
-            methods: vec![],
-        }];
+        let user = vec![StructDecl::new("Transaction", vec![], vec![])];
         assert!(StructScope::from_source_structs(&user).is_err());
     }
 }

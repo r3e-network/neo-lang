@@ -11,12 +11,12 @@ impl ExprGen<'_, '_> {
         args: &[Expr],
     ) -> Result<(), CodegenError> {
         let Some(binding) = RuntimeMethod::resolve(method) else {
-            return Err(CodegenError::Unsupported(format!(
+            return Err(CodegenError::unsupported(format!(
                 "runtime.{method} is not a known runtime API or wrong arity"
             )));
         };
         if args.len() != binding.source_arg_count() {
-            return Err(CodegenError::Unsupported(format!(
+            return Err(CodegenError::unsupported(format!(
                 "runtime.{method} expects {} argument(s), got {}",
                 binding.source_arg_count(),
                 args.len()

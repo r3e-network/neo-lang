@@ -25,9 +25,7 @@ pub fn field_getter_specs(contract: &ContractDecl) -> Vec<FieldGetterSpec> {
                         return_ty: prop.ty.clone(),
                         name: prop.name.clone(),
                         params: vec![],
-                        body: Block {
-                            stmts: vec![Stmt::Return(Some(prop.init.clone()))],
-                        },
+                        body: Block::new(vec![Stmt::Return(Some(prop.init.clone()))]),
                     },
                 });
             }
@@ -41,12 +39,10 @@ pub fn field_getter_specs(contract: &ContractDecl) -> Vec<FieldGetterSpec> {
                         return_ty: field.ty.clone(),
                         name: field.name.clone(),
                         params: vec![],
-                        body: Block {
-                            stmts: vec![Stmt::Return(Some(Expr::Member {
-                                base: Box::new(Expr::Self_),
-                                field: field.name.clone(),
-                            }))],
-                        },
+                        body: Block::new(vec![Stmt::Return(Some(Expr::Member {
+                            base: Box::new(Expr::Self_),
+                            field: field.name.clone(),
+                        }))]),
                     },
                 });
             }

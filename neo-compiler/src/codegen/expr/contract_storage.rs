@@ -11,12 +11,12 @@ impl ExprGen<'_, '_> {
         let contract_field = self.contract_field_required(field)?;
         let ty = contract_field.ty.clone();
         if ty.is_map() {
-            return Err(CodegenError::Unsupported(
+            return Err(CodegenError::unsupported(
                 "only has, remove, and index access are supported for contract map fields".into(),
             ));
         }
         if ty.is_array() {
-            return Err(CodegenError::Unsupported(
+            return Err(CodegenError::unsupported(
                 "contract cannot have array fields".into(),
             ));
         }
@@ -35,12 +35,12 @@ impl ExprGen<'_, '_> {
             Type::String | Type::Hash160 | Type::Hash256 => StackItemType::ByteString as u8,
             Type::Buffer => StackItemType::Buffer as u8,
             Type::Array(_) | Type::Map { .. } => {
-                return Err(CodegenError::Unsupported(format!(
+                return Err(CodegenError::unsupported(format!(
                     "storage load as `{ty:?}` is not implemented yet"
                 )));
             }
             Type::Void | Type::Any | Type::Named(_) => {
-                return Err(CodegenError::Unsupported(format!(
+                return Err(CodegenError::unsupported(format!(
                     "storage load as `{ty:?}` is not supported"
                 )));
             }
@@ -67,7 +67,7 @@ impl ExprGen<'_, '_> {
         }
 
         // TODO: use StdLib.Serialize to serialize the compound type to buffer.
-        return Err(CodegenError::Unsupported(format!(
+        return Err(CodegenError::unsupported(format!(
             "storage put for type `{ty:?}` is not implemented yet"
         )));
     }
@@ -80,7 +80,7 @@ impl ExprGen<'_, '_> {
                 Ok(())
             }
             Type::Buffer => Ok(()),
-            _ => Err(CodegenError::Unsupported(format!(
+            _ => Err(CodegenError::unsupported(format!(
                 "map storage key type `{key_ty:?}` is not supported yet"
             ))),
         }

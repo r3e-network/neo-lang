@@ -31,7 +31,7 @@ impl ExprGen<'_, '_> {
             }
             Type::Any => self.builder.push_null(),
             Type::Void | Type::Named(_) => {
-                return Err(CodegenError::Unsupported(format!(
+                return Err(CodegenError::unsupported(format!(
                     "no default value for field type `{ty:?}` in struct literal"
                 )));
             }

@@ -26,7 +26,7 @@ impl FunctionIr {
 
         for (instr_index, target_block) in pending_jumps {
             let target_pc = *block_start.get(&target_block).ok_or_else(|| {
-                CodegenError::Unsupported("ir-codegen: missing block start".into())
+                CodegenError::unsupported("ir-codegen: missing block start".into())
             })?;
             builder.patch_jmp_target_at_instruction(instr_index, target_pc);
         }

@@ -5,7 +5,7 @@ use std::fs;
 
 use crate::codegen::field::field_getter_specs;
 use crate::codegen::initializer::synthesize_initializer;
-use crate::codegen::{Codegen, CompiledSourceFile};
+use crate::codegen::{Codegen, CodegenError, CompiledSourceFile};
 use crate::syntax::ast::*;
 use crate::syntax::parser;
 use crate::target::nef::*;
@@ -23,10 +23,18 @@ pub(crate) fn run_build(source: &std::path::Path) -> Result<(), String> {
     let src = fs::read_to_string(source)
         .map_err(|e| format!("build: read source file {} error: {e}", source.display()))?;
     let ast = parser::parse_source_file(&src)
-        .map_err(|e| format!("build: parse error at line {}: {}", e.line, e.message))?;
+        .map_err(|e| e.diagnostic().render(&source.display().to_string(), &src))?;
     let compiled = Codegen::new()
         .codegen_source_file(&ast)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| match &e {
+            CodegenError::Typecheck(type_error) => type_error
+                .diagnostic()
+                .render(&source.display().to_string(), &src),
+            other => other
+                .diagnostic()
+                .map(|diagnostic| diagnostic.render(&source.display().to_string(), &src))
+                .unwrap_or_else(|| other.to_string()),
+        })?;
 
     let contract = ast
         .contract

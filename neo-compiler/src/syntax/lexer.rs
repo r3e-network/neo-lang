@@ -1,5 +1,7 @@
 //! Lexer for neo-lang (ASCII-oriented, matches README token set).
 
+use crate::diagnostic::Span;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
     Contract,          // contract
@@ -84,19 +86,41 @@ pub enum Token {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LexError {
     pub line: usize,
-    pub message: &'static str,
+    pub message: String,
+    pub span: Span,
 }
 
 impl LexError {
-    pub fn new(line: usize, message: &'static str) -> Self {
-        Self { line, message }
+    pub fn new(line: usize, message: impl Into<String>, span: Span) -> Self {
+        Self {
+            line,
+            message: message.into(),
+            span,
+        }
     }
 }
 
-/// Lex the source code into a vector of (line number, token) pairs.
-/// The last token is always (line count, Token::Eof).
-pub fn lex(src: &str) -> Result<Vec<(usize, Token)>, LexError> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Lexed {
+    pub tokens: Vec<(usize, Token)>,
+    pub spans: Vec<Span>,
+}
+
+fn push_token(
+    out: &mut Vec<(usize, Token)>,
+    spans: &mut Vec<Span>,
+    line: usize,
+    token: Token,
+    span: Span,
+) {
+    out.push((line, token));
+    spans.push(span);
+}
+
+/// Lex the source code into line-numbered tokens and byte spans.
+pub fn lex(src: &str) -> Result<Lexed, LexError> {
     let mut out = Vec::new();
+    let mut spans = Vec::new();
     let mut line = 1usize;
     let buf = src.as_bytes();
     let mut index = 0usize;
@@ -117,7 +141,14 @@ pub fn lex(src: &str) -> Result<Vec<(usize, Token)>, LexError> {
                 }
             }
             b'#' if index + 1 < buf.len() && buf[index + 1] == b'[' => {
-                out.push((line, Token::AttrOpen));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::AttrOpen,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'>' if index + 1 < buf.len()
@@ -125,7 +156,14 @@ pub fn lex(src: &str) -> Result<Vec<(usize, Token)>, LexError> {
                 && index + 2 < buf.len()
                 && buf[index + 2] == b'=' =>
             {
-                out.push((line, Token::ShrEq));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::ShrEq,
+                    Span::new(start, start + 3),
+                );
                 index += 3;
             }
             b'<' if index + 1 < buf.len()
@@ -133,173 +171,467 @@ pub fn lex(src: &str) -> Result<Vec<(usize, Token)>, LexError> {
                 && index + 2 < buf.len()
                 && buf[index + 2] == b'=' =>
             {
-                out.push((line, Token::ShlEq));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::ShlEq,
+                    Span::new(start, start + 3),
+                );
                 index += 3;
             }
             b'>' if index + 1 < buf.len() && buf[index + 1] == b'>' => {
-                out.push((line, Token::Shr));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Shr,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'<' if index + 1 < buf.len() && buf[index + 1] == b'<' => {
-                out.push((line, Token::Shl));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Shl,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'>' if index + 1 < buf.len() && buf[index + 1] == b'=' => {
-                out.push((line, Token::Ge));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Ge,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'<' if index + 1 < buf.len() && buf[index + 1] == b'=' => {
-                out.push((line, Token::Le));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Le,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'=' if index + 1 < buf.len() && buf[index + 1] == b'=' => {
-                out.push((line, Token::EqEq));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::EqEq,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'!' if index + 1 < buf.len() && buf[index + 1] == b'=' => {
-                out.push((line, Token::Ne));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Ne,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'&' if index + 1 < buf.len() && buf[index + 1] == b'&' => {
-                out.push((line, Token::AmpAmp));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::AmpAmp,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'|' if index + 1 < buf.len() && buf[index + 1] == b'|' => {
-                out.push((line, Token::PipePipe));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::PipePipe,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'+' if index + 1 < buf.len() && buf[index + 1] == b'=' => {
-                out.push((line, Token::PlusEq));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::PlusEq,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'-' if index + 1 < buf.len() && buf[index + 1] == b'=' => {
-                out.push((line, Token::MinusEq));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::MinusEq,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'*' if index + 1 < buf.len() && buf[index + 1] == b'=' => {
-                out.push((line, Token::StarEq));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::StarEq,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'/' if index + 1 < buf.len() && buf[index + 1] == b'=' => {
-                out.push((line, Token::SlashEq));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::SlashEq,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'%' if index + 1 < buf.len() && buf[index + 1] == b'=' => {
-                out.push((line, Token::PercentEq));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::PercentEq,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'&' if index + 1 < buf.len() && buf[index + 1] == b'=' => {
-                out.push((line, Token::AmpEq));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::AmpEq,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'|' if index + 1 < buf.len() && buf[index + 1] == b'=' => {
-                out.push((line, Token::PipeEq));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::PipeEq,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'^' if index + 1 < buf.len() && buf[index + 1] == b'=' => {
-                out.push((line, Token::CaretEq));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::CaretEq,
+                    Span::new(start, start + 2),
+                );
                 index += 2;
             }
             b'(' => {
-                out.push((line, Token::LParen));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::LParen,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b')' => {
-                out.push((line, Token::RParen));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::RParen,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'[' => {
-                out.push((line, Token::LBracket));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::LBracket,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b']' => {
-                out.push((line, Token::RBracket));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::RBracket,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'{' => {
-                out.push((line, Token::LBrace));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::LBrace,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'}' => {
-                out.push((line, Token::RBrace));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::RBrace,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b';' => {
-                out.push((line, Token::Semi));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Semi,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b',' => {
-                out.push((line, Token::Comma));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Comma,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'.' => {
-                out.push((line, Token::Dot));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Dot,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b':' => {
-                out.push((line, Token::Colon));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Colon,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'+' => {
-                out.push((line, Token::Plus));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Plus,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'-' => {
-                out.push((line, Token::Minus));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Minus,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'*' => {
-                out.push((line, Token::Star));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Star,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'/' => {
-                out.push((line, Token::Slash));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Slash,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'%' => {
-                out.push((line, Token::Percent));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Percent,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'!' => {
-                out.push((line, Token::Bang));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Bang,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'~' => {
-                out.push((line, Token::Tilde));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Tilde,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'&' => {
-                out.push((line, Token::Amp));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Amp,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'|' => {
-                out.push((line, Token::Pipe));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Pipe,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'^' => {
-                out.push((line, Token::Caret));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Caret,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'<' => {
-                out.push((line, Token::Lt));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Lt,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'>' => {
-                out.push((line, Token::Gt));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Gt,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'=' => {
-                out.push((line, Token::Eq));
+                let start = index;
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::Eq,
+                    Span::new(start, start + 1),
+                );
                 index += 1;
             }
             b'"' => {
+                let start = index;
                 let (s, ni) = lex_string(src, line, index)?;
-                out.push((line, Token::StringLit(s)));
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::StringLit(s),
+                    Span::new(start, ni),
+                );
                 index = ni;
             }
             b'b' if index + 1 < buf.len() && buf[index + 1] == b'"' => {
+                let start = index;
                 let (s, ni) = lex_string(src, line, index + 1)?;
-                out.push((line, Token::BufferLit(s)));
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::BufferLit(s),
+                    Span::new(start, ni),
+                );
                 index = ni;
             }
             c if c.is_ascii_digit() => {
@@ -315,9 +647,19 @@ pub fn lex(src: &str) -> Result<Vec<(usize, Token)>, LexError> {
                             index += 1;
                         }
                         if index == d0 {
-                            return Err(LexError::new(line, "empty hex int"));
+                            return Err(LexError::new(
+                                line,
+                                "empty hex int",
+                                Span::new(start, index),
+                            ));
                         }
-                        out.push((line, Token::IntLit(src[start..index].into())));
+                        push_token(
+                            &mut out,
+                            &mut spans,
+                            line,
+                            Token::IntLit(src[start..index].into()),
+                            Span::new(start, index),
+                        );
                         continue;
                     }
                     if n == b'b' || n == b'B' {
@@ -329,16 +671,32 @@ pub fn lex(src: &str) -> Result<Vec<(usize, Token)>, LexError> {
                             index += 1;
                         }
                         if index == d0 {
-                            return Err(LexError::new(line, "empty binary int"));
+                            return Err(LexError::new(
+                                line,
+                                "empty binary int",
+                                Span::new(start, index),
+                            ));
                         }
-                        out.push((line, Token::IntLit(src[start..index].into())));
+                        push_token(
+                            &mut out,
+                            &mut spans,
+                            line,
+                            Token::IntLit(src[start..index].into()),
+                            Span::new(start, index),
+                        );
                         continue;
                     }
                 }
                 while index < buf.len() && (buf[index].is_ascii_digit() || buf[index] == b'_') {
                     index += 1;
                 }
-                out.push((line, Token::IntLit(src[start..index].into())));
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    Token::IntLit(src[start..index].into()),
+                    Span::new(start, index),
+                );
             }
             c if is_ident_start(c) => {
                 let start = index;
@@ -347,15 +705,31 @@ pub fn lex(src: &str) -> Result<Vec<(usize, Token)>, LexError> {
                     index += 1;
                 }
                 let name = &src[start..index];
-                out.push((line, keyword_or_ident(name)));
+                push_token(
+                    &mut out,
+                    &mut spans,
+                    line,
+                    keyword_or_ident(name),
+                    Span::new(start, index),
+                );
             }
             _ => {
-                return Err(LexError::new(line, "unexpected character"));
+                return Err(LexError::new(
+                    line,
+                    "unexpected character",
+                    Span::new(index, index + 1),
+                ));
             }
         }
     }
-    out.push((line, Token::Eof));
-    Ok(out)
+    push_token(
+        &mut out,
+        &mut spans,
+        line,
+        Token::Eof,
+        Span::empty(src.len()),
+    );
+    Ok(Lexed { tokens: out, spans })
 }
 
 fn is_ident_start(c: u8) -> bool {
@@ -421,7 +795,11 @@ fn lex_string(src: &str, line: usize, quote_at: usize) -> Result<(String, usize)
             b'"' => return Ok((out, index + 1)),
             b'\\' => {
                 if index + 1 >= b.len() {
-                    return Err(LexError::new(line, "unterminated string"));
+                    return Err(LexError::new(
+                        line,
+                        "unterminated string",
+                        Span::new(quote_at, b.len()),
+                    ));
                 }
                 match b[index + 1] {
                     b'n' => {
@@ -466,17 +844,37 @@ fn lex_string(src: &str, line: usize, quote_at: usize) -> Result<(String, usize)
                     }
                     b'x' => {
                         if index + 4 > b.len() {
-                            return Err(LexError::new(line, "invalid hex escape in string"));
+                            return Err(LexError::new(
+                                line,
+                                "invalid hex escape in string",
+                                Span::new(index, b.len()),
+                            ));
                         }
-                        let h1 = hex_escape_digit(b[index + 2])
-                            .ok_or(LexError::new(line, "invalid hex escape in string"))?;
-                        let h2 = hex_escape_digit(b[index + 3])
-                            .ok_or(LexError::new(line, "invalid hex escape in string"))?;
+                        let h1 = hex_escape_digit(b[index + 2]).ok_or_else(|| {
+                            LexError::new(
+                                line,
+                                "invalid hex escape in string",
+                                Span::new(index, index + 4),
+                            )
+                        })?;
+                        let h2 = hex_escape_digit(b[index + 3]).ok_or_else(|| {
+                            LexError::new(
+                                line,
+                                "invalid hex escape in string",
+                                Span::new(index, index + 4),
+                            )
+                        })?;
                         let byte = (h1 << 4) | h2;
                         out.push(char::from_u32(u32::from(byte)).unwrap());
                         index += 4;
                     }
-                    _ => return Err(LexError::new(line, "invalid escape in string")),
+                    _ => {
+                        return Err(LexError::new(
+                            line,
+                            "invalid escape in string",
+                            Span::new(index, index + 2),
+                        ))
+                    }
                 }
             }
             c => {
@@ -485,5 +883,9 @@ fn lex_string(src: &str, line: usize, quote_at: usize) -> Result<(String, usize)
             }
         }
     }
-    Err(LexError::new(line, "unterminated string"))
+    Err(LexError::new(
+        line,
+        "unterminated string",
+        Span::new(quote_at, b.len()),
+    ))
 }

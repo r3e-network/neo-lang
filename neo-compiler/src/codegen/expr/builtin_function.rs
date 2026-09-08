@@ -14,7 +14,7 @@ impl ExprGen<'_, '_> {
             return Ok(false);
         };
         if args.len() != builtin.source_arg_count() {
-            return Err(CodegenError::Unsupported(format!(
+            return Err(CodegenError::unsupported(format!(
                 "`{name}` expects {} argument(s), got {}",
                 builtin.source_arg_count(),
                 args.len()

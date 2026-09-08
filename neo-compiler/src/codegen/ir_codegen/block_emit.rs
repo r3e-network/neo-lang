@@ -122,7 +122,7 @@ impl FunctionIr {
 
             match &block.term {
                 Terminator::Unset => {
-                    return Err(CodegenError::Unsupported(
+                    return Err(CodegenError::unsupported(
                         "internal: unset basic block terminator (IR not sealed)".into(),
                     ));
                 }

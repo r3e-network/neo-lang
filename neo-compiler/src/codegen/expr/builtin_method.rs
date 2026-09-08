@@ -12,7 +12,7 @@ impl ExprGen<'_, '_> {
         args: &[Expr],
     ) -> Result<bool, CodegenError> {
         let err_method =
-            |msg: &str| -> CodegenError { CodegenError::Unsupported(format!("`{method}` {msg}")) };
+            |msg: &str| -> CodegenError { CodegenError::unsupported(format!("`{method}` {msg}")) };
         match method {
             "size" => {
                 if !args.is_empty() {

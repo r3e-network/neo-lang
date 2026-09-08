@@ -318,22 +318,24 @@ fn expr_runtime_get_network_syscall() {
 
 #[test]
 fn expr_member_pickitem_with_struct_meta() {
-    let structs = vec![StructDecl {
-        name: "Point".into(),
-        fields: vec![
+    let structs = vec![StructDecl::new(
+        "Point",
+        vec![
             StructField {
                 ty: Type::Int,
                 name: "x".into(),
                 init: None,
+                init_span: None,
             },
             StructField {
                 ty: Type::Int,
                 name: "y".into(),
                 init: None,
+                init_span: None,
             },
         ],
-        methods: vec![],
-    }];
+        vec![],
+    )];
     let mut value_struct = HashMap::new();
     value_struct.insert("p".into(), "Point".into());
     let params = vec![Param {
@@ -353,15 +355,16 @@ fn expr_member_pickitem_with_struct_meta() {
 
 #[test]
 fn expr_struct_literal_pack() {
-    let structs = vec![StructDecl {
-        name: "S".into(),
-        fields: vec![StructField {
+    let structs = vec![StructDecl::new(
+        "S",
+        vec![StructField {
             ty: Type::Int,
             name: "a".into(),
             init: None,
+            init_span: None,
         }],
-        methods: vec![],
-    }];
+        vec![],
+    )];
     let mut value_struct = HashMap::new();
     let expr = Expr::StructLit {
         name: "S".into(),

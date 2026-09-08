@@ -70,6 +70,7 @@ use crate::codegen::field::field_getter_specs;
 use crate::codegen::function::{compile_function, lower_struct_method};
 use crate::codegen::initializer::synthesize_initializer;
 use crate::codegen::opt::Optimizer;
+use crate::diagnostic::{Diagnostic, Span};
 use crate::stdlib::StructScope;
 use crate::syntax::ast::*;
 use crate::target::method_token::{MethodTokenError, MethodTokenRegistry};
@@ -154,7 +155,7 @@ impl CompiledSourceFile {
             .chain(self.contract_methods.iter())
         {
             if offsets.insert(f.link_symbol(), off).is_some() {
-                return Err(CodegenError::Unsupported(format!(
+                return Err(CodegenError::unsupported(format!(
                     "duplicate compiled routine `{}` (cannot link CALL_L)",
                     f.link_symbol()
                 )));
@@ -172,21 +173,21 @@ impl CompiledSourceFile {
                 .expect("link_symbol registered");
             for (inst_idx, target_sym) in std::mem::take(&mut f.call_patches) {
                 let target_pc = offsets.get(target_sym.as_str()).ok_or_else(|| {
-                    CodegenError::Unsupported(format!(
+                    CodegenError::unsupported(format!(
                         "CALL_L target `{target_sym}` not found (from `{}`)",
                         f.link_symbol()
                     ))
                 })?;
                 let call_pc = my_start + bytecode_offset_in_routine(&f.instructions, inst_idx);
                 let relative = i32::try_from(*target_pc as i64 - call_pc as i64).map_err(|_| {
-                    CodegenError::Unsupported("CALL_L relative offset overflow".into())
+                    CodegenError::unsupported("CALL_L relative offset overflow".into())
                 })?;
                 let inst = f
                     .instructions
                     .get_mut(inst_idx)
                     .expect("CALL_L patch index in range");
                 if inst.opcode != OpCode::CALL_L || inst.operands.len() != 4 {
-                    return Err(CodegenError::Unsupported(
+                    return Err(CodegenError::unsupported(
                         "internal: CALL_L patch on wrong instruction".into(),
                     ));
                 }
@@ -216,14 +217,40 @@ pub enum CodegenError {
     UndefinedVariable(String),
     #[error("codegen: duplicate local `{0}` in the same block")]
     DuplicateLocal(String),
-    #[error("codegen: unsupported: {0}")]
-    Unsupported(String),
+    #[error("{message}")]
+    Unsupported { message: String, span: Option<Span> },
     #[error("codegen: invalid integer literal `{0}`")]
     BadIntegerLiteral(String),
     #[error("codegen: too many locals or parameters (max 255)")]
     LocalLimitExceeded,
     #[error(transparent)]
     MethodToken(#[from] MethodTokenError),
+}
+
+impl CodegenError {
+    pub(crate) fn unsupported(message: String) -> Self {
+        Self::Unsupported {
+            message,
+            span: None,
+        }
+    }
+
+    pub(crate) fn unsupported_at(span: Span, message: String) -> Self {
+        Self::Unsupported {
+            message,
+            span: Some(span),
+        }
+    }
+
+    pub fn diagnostic(&self) -> Option<Diagnostic> {
+        match self {
+            Self::Unsupported { message, span } => Some(
+                Diagnostic::error(format!("codegen: unsupported: {message}"), *span)
+                    .with_label(message),
+            ),
+            _ => None,
+        }
+    }
 }
 
 pub struct Codegen {
@@ -243,6 +270,8 @@ impl Codegen {
         &mut self,
         source: &SourceFile,
     ) -> Result<CompiledSourceFile, CodegenError> {
+        source.type_check()?;
+
         let mut source = source.clone();
         if let Some(contract) = &mut source.contract {
             if let Some(initializer) = synthesize_initializer(contract)? {
@@ -250,9 +279,8 @@ impl Codegen {
             }
         }
 
-        source.type_check()?;
         let struct_scope = StructScope::from_source_structs(&source.structs)
-            .map_err(|e| CodegenError::Unsupported(e.to_string()))?;
+            .map_err(|e| CodegenError::unsupported(e.to_string()))?;
         let all_structs = struct_scope.slice();
         let get_contract_fields = |contract: &ContractDecl| {
             contract
@@ -277,7 +305,7 @@ impl Codegen {
                 .insert(func.name.clone(), FnSig::from_function(func))
                 .is_some()
             {
-                return Err(CodegenError::Unsupported(format!(
+                return Err(CodegenError::unsupported(format!(
                     "duplicate top-level function `{}` in the same file",
                     func.name
                 )));
@@ -320,7 +348,7 @@ impl Codegen {
                         .insert(method.name.clone(), FnSig::from_function(method))
                         .is_some()
                     {
-                        return Err(CodegenError::Unsupported(format!(
+                        return Err(CodegenError::unsupported(format!(
                             "duplicate contract method `{}`",
                             method.name
                         )));
@@ -329,7 +357,7 @@ impl Codegen {
             }
             for spec in &getter_specs {
                 if contract_fns.contains_key(&spec.func.name) {
-                    return Err(CodegenError::Unsupported(format!(
+                    return Err(CodegenError::unsupported(format!(
                         "contract method `{}` conflicts with property getter",
                         spec.func.name
                     )));

@@ -1,6 +1,7 @@
 //! Neo-lang compiler.
 
 pub mod codegen;
+pub mod diagnostic;
 pub mod ir;
 pub mod natives;
 pub mod stdlib;
@@ -20,7 +21,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 use crate::build_target::run_build;
-use crate::codegen::Codegen;
+use crate::codegen::{Codegen, CodegenError};
 use crate::target::nef::Nef3;
 
 /// Maximum source file size (bytes) for `Ast` and related commands.
@@ -73,28 +74,28 @@ fn main() -> ExitCode {
         Command::Ast { file } => match run_ast(&file) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
-                let _ = writeln!(io::stderr(), "Running `ast` command error: {e}");
+                let _ = writeln!(io::stderr(), "Running `ast` command: {e}");
                 ExitCode::FAILURE
             }
         },
         Command::Asm { file } => match run_asm(&file) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
-                let _ = writeln!(io::stderr(), "Running `asm` command error: {e}");
+                let _ = writeln!(io::stderr(), "Running `asm` command: {e}");
                 ExitCode::FAILURE
             }
         },
         Command::Build { source } => match run_build(&source) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
-                let _ = writeln!(io::stderr(), "Running `build` command error: {e}");
+                let _ = writeln!(io::stderr(), "Running `build` command: {e}");
                 ExitCode::FAILURE
             }
         },
         Command::Disasm { file, manifest } => match run_disasm(&file, manifest.as_deref()) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
-                let _ = writeln!(io::stderr(), "Running `disasm` command error: {e}");
+                let _ = writeln!(io::stderr(), "Running `disasm` command: {e}");
                 ExitCode::FAILURE
             }
         },
@@ -112,7 +113,7 @@ fn run_ast(path: &std::path::Path) -> Result<(), String> {
     }
     let src = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let ast = syntax::parser::parse_source_file(&src)
-        .map_err(|e| format!("parse error at token line {}: {}", e.line, e.message))?;
+        .map_err(|e| e.diagnostic().render(&path.display().to_string(), &src))?;
     let mut out = io::stdout().lock();
     let mut ast_dump = ast_dump::AstDump::new(&mut out);
     ast_dump.dump_source_file(&ast).map_err(|e| e.to_string())?;
@@ -130,15 +131,25 @@ fn run_asm(path: &std::path::Path) -> Result<(), String> {
     }
     let src = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let ast = syntax::parser::parse_source_file(&src)
-        .map_err(|e| format!("parse error at token line {}: {}", e.line, e.message))?;
+        .map_err(|e| e.diagnostic().render(&path.display().to_string(), &src))?;
     let compiled = Codegen::new()
         .codegen_source_file(&ast)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| render_codegen_error(&path.display().to_string(), &src, &e))?;
     let mut out = io::stdout().lock();
     asm_dump::AsmDump::new(&mut out)
         .dump_compiled_source(&compiled)
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn render_codegen_error(filename: &str, src: &str, error: &CodegenError) -> String {
+    match error {
+        CodegenError::Typecheck(type_error) => type_error.diagnostic().render(filename, src),
+        other => other
+            .diagnostic()
+            .map(|diagnostic| diagnostic.render(filename, src))
+            .unwrap_or_else(|| other.to_string()),
+    }
 }
 
 fn run_disasm(
@@ -161,12 +172,12 @@ fn run_disasm(
                 .map_err(|_| "disasm: file too small")?,
         ) == Nef3::MAGIC;
     let script = if is_nef {
-        Nef3::extract_script(&bytes).map_err(|e| format!("disasm: extract script error: {e}"))?
+        Nef3::extract_script(&bytes).map_err(|e| format!("disasm: extract script: {e}"))?
     } else {
         bytes
     };
     let instructions =
-        disasm::decode_script(&script).map_err(|e| format!("disasm: decode script error: {e}"))?;
+        disasm::decode_script(&script).map_err(|e| format!("disasm: decode script: {e}"))?;
 
     let manifest = if let Some(mp) = manifest_path {
         let mm = fs::metadata(mp).map_err(|e| format!("{}: {e}", mp.display()))?;
@@ -178,10 +189,10 @@ fn run_disasm(
             ));
         }
         let s = fs::read_to_string(mp)
-            .map_err(|e| format!("disasm: read manifest {} error: {e}", mp.display()))?;
+            .map_err(|e| format!("disasm: read manifest {}: {e}", mp.display()))?;
         Some(
             serde_json::from_str(&s)
-                .map_err(|e| format!("disasm: parse manifest {} error: {e}", mp.display()))?,
+                .map_err(|e| format!("disasm: parse manifest {}: {e}", mp.display()))?,
         )
     } else {
         None
@@ -190,6 +201,6 @@ fn run_disasm(
     let title = if is_nef { "NEF script" } else { "Raw script" };
     let mut out = io::stdout().lock();
     disasm::write_disassembly_listing(&mut out, title, &instructions, manifest.as_ref())
-        .map_err(|e| format!("disasm: write listing error: {e}"))?;
+        .map_err(|e| format!("disasm: write listing: {e}"))?;
     Ok(())
 }

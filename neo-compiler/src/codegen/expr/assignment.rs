@@ -94,7 +94,7 @@ impl ExprGen<'_, '_> {
                     return self.compile_contract_member_load(field);
                 }
                 let struct_name = self.value_struct.get("self").cloned().ok_or_else(|| {
-                    CodegenError::Unsupported("invalid compound-assignment for `self`".into())
+                    CodegenError::unsupported("invalid compound-assignment for `self`".into())
                 })?;
                 let index = self.field_index_of(&struct_name, field)?;
                 let slot = self.env.resolve("self")?;
@@ -103,7 +103,7 @@ impl ExprGen<'_, '_> {
                 self.builder.emit(OpCode::PICKITEM);
                 Ok(())
             }
-            _ => Err(CodegenError::Unsupported(
+            _ => Err(CodegenError::unsupported(
                 "invalid assignment target".into(),
             )),
         }
@@ -116,7 +116,7 @@ impl ExprGen<'_, '_> {
                     let contract_field = self.contract_field_required(field)?;
                     let ty = contract_field.ty.clone();
                     if ty.is_map() {
-                        return Err(CodegenError::Unsupported(
+                        return Err(CodegenError::unsupported(
                             "cannot assign to a contract map field without `[key]`".into(),
                         ));
                     }
@@ -125,7 +125,7 @@ impl ExprGen<'_, '_> {
                     self.builder.emit_syscall(Syscall::STORAGE_LOCAL_PUT);
                     return Ok(());
                 }
-                Err(CodegenError::Unsupported(
+                Err(CodegenError::unsupported(
                     "assigning to `self.field` is only implemented for contract storage fields"
                         .into(),
                 ))
@@ -138,7 +138,7 @@ impl ExprGen<'_, '_> {
                 }
                 Ok(())
             }
-            _ => Err(CodegenError::Unsupported(
+            _ => Err(CodegenError::unsupported(
                 "invalid assignment target".into(),
             )),
         }

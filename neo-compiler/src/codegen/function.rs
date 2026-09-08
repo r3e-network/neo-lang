@@ -172,7 +172,7 @@ impl<'a> FunctionCompiler<'a> {
                 self.compile_block(body)?;
                 let jmp_pc = self.builder.cursor();
                 let relative = i32::try_from(loop_start as i64 - jmp_pc as i64).map_err(|_| {
-                    CodegenError::Unsupported("while loop backward jump offset overflow".into())
+                    CodegenError::unsupported("while loop backward jump offset overflow".into())
                 })?;
                 self.builder
                     .emit_with_operands(OpCode::JMP_L, &relative.to_le_bytes());
@@ -204,7 +204,7 @@ impl<'a> FunctionCompiler<'a> {
                 }
                 self.builder.push_int(
                     args.len().try_into().map_err(|_| {
-                        CodegenError::Unsupported("emit: too many arguments".into())
+                        CodegenError::unsupported("emit: too many arguments".into())
                     })?,
                 );
                 self.builder.emit(OpCode::PACK);
@@ -257,7 +257,7 @@ impl<'a> FunctionCompiler<'a> {
         self.builder.emit_stloc(index);
         let jmp_pc = self.builder.cursor();
         let relative = i32::try_from(loop_start as i64 - jmp_pc as i64)
-            .map_err(|_| CodegenError::Unsupported("for-in-array backward jump overflow".into()))?;
+            .map_err(|_| CodegenError::unsupported("for-in-array backward jump overflow".into()))?;
         self.builder
             .emit_with_operands(OpCode::JMP_L, &relative.to_le_bytes());
         let after = self.builder.cursor();
@@ -308,7 +308,7 @@ impl<'a> FunctionCompiler<'a> {
         self.builder.emit_stloc(index);
         let jmp_pc = self.builder.cursor();
         let relative = i32::try_from(loop_start as i64 - jmp_pc as i64)
-            .map_err(|_| CodegenError::Unsupported("for-in-map backward jump overflow".into()))?;
+            .map_err(|_| CodegenError::unsupported("for-in-map backward jump overflow".into()))?;
         self.builder
             .emit_with_operands(OpCode::JMP_L, &relative.to_le_bytes());
         let after = self.builder.cursor();

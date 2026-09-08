@@ -1,5 +1,6 @@
 //! Hand-written recursive-descent + Pratt parser (avoids LALRPOP codegen freeze).
 
+use crate::diagnostic::{Diagnostic, Span};
 use crate::syntax::ast::*;
 use crate::syntax::lexer::*;
 
@@ -7,38 +8,63 @@ use crate::syntax::lexer::*;
 pub struct ParseError {
     pub message: String,
     pub line: usize,
+    pub span: Span,
 }
 
 pub fn parse_source_file(src: &str) -> Result<SourceFile, ParseError> {
-    let tokens = lex(src).map_err(|err| ParseError {
-        message: err.message.into(),
-        line: err.line,
-    })?;
-    let mut parser = Parser { tokens, index: 0 };
+    let lexed = lex(src).map_err(ParseError::from)?;
+    let mut parser = Parser {
+        tokens: lexed.tokens,
+        spans: lexed.spans,
+        index: 0,
+        expr_event_stack: Vec::new(),
+    };
     parser.parse_source_file()
 }
 
 pub fn parse_decl_file(src: &str) -> Result<DeclFile, ParseError> {
-    let tokens = lex(src).map_err(|err| ParseError {
-        message: err.message.into(),
-        line: err.line,
-    })?;
-    let mut parser = Parser { tokens, index: 0 };
+    let lexed = lex(src).map_err(ParseError::from)?;
+    let mut parser = Parser {
+        tokens: lexed.tokens,
+        spans: lexed.spans,
+        index: 0,
+        expr_event_stack: Vec::new(),
+    };
     parser.parse_decl_file()
 }
 
 pub fn parse_struct_file(src: &str) -> Result<Vec<StructDecl>, ParseError> {
-    let tokens = lex(src).map_err(|err| ParseError {
-        message: err.message.into(),
-        line: err.line,
-    })?;
-    let mut parser = Parser { tokens, index: 0 };
+    let lexed = lex(src).map_err(ParseError::from)?;
+    let mut parser = Parser {
+        tokens: lexed.tokens,
+        spans: lexed.spans,
+        index: 0,
+        expr_event_stack: Vec::new(),
+    };
     parser.parse_struct_file()
 }
 
 struct Parser {
     tokens: Vec<(usize, Token)>,
+    spans: Vec<Span>,
     index: usize,
+    expr_event_stack: Vec<Vec<Span>>,
+}
+
+impl From<LexError> for ParseError {
+    fn from(value: LexError) -> Self {
+        Self {
+            message: value.message,
+            line: value.line,
+            span: value.span,
+        }
+    }
+}
+
+impl ParseError {
+    pub fn diagnostic(&self) -> Diagnostic {
+        Diagnostic::error(&self.message, Some(self.span)).with_label(&self.message)
+    }
 }
 
 impl Parser {
@@ -47,6 +73,41 @@ impl Parser {
             .get(self.index)
             .map(|(_, token)| token)
             .unwrap_or(&self.tokens.last().unwrap().1)
+    }
+
+    fn current_span(&self) -> Span {
+        self.spans
+            .get(self.index)
+            .copied()
+            .or_else(|| self.spans.last().copied())
+            .unwrap_or_default()
+    }
+
+    fn span_from(&self, start_index: usize) -> Span {
+        let end_index = self.index.saturating_sub(1);
+        if start_index <= end_index {
+            Span::new(self.spans[start_index].start, self.spans[end_index].end)
+        } else {
+            self.current_span()
+        }
+    }
+
+    fn push_expr_span(&mut self, span: Span) {
+        if let Some(events) = self.expr_event_stack.last_mut() {
+            events.push(span);
+        }
+    }
+
+    fn pop_expr_span(&mut self) {
+        if let Some(events) = self.expr_event_stack.last_mut() {
+            events.pop();
+        }
+    }
+
+    fn finish_block(&mut self, mut block: Block) -> Block {
+        let events = self.expr_event_stack.pop().unwrap_or_default();
+        block.expr_spans = build_expr_span_map(&block, events);
+        block
     }
 
     fn bump(&mut self) -> Token {
@@ -63,9 +124,9 @@ impl Parser {
             line: self
                 .tokens
                 .get(self.index)
-                .map(|(line, _)| line)
-                .copied()
-                .unwrap_or(self.tokens.last().unwrap().0),
+                .map(|(line, _)| *line)
+                .unwrap_or(self.tokens.last().map(|(line, _)| *line).unwrap_or(1)),
+            span: self.current_span(),
         }
     }
 
@@ -103,12 +164,17 @@ impl Parser {
             structs: Vec::new(),
             functions: Vec::new(),
             contract: None,
+            struct_spans: Vec::new(),
+            function_spans: Vec::new(),
+            contract_member_spans: Vec::new(),
         };
         while !matches!(self.current(), Token::Eof) {
+            let item_start = self.index;
             let attrs = self.parse_attributes_opt()?;
             if matches!(self.current(), Token::Struct) {
                 self.bump();
                 source.structs.push(self.parse_struct_decl()?);
+                source.struct_spans.push(self.span_from(item_start));
             } else if matches!(self.current(), Token::Contract) {
                 if source.contract.is_some() {
                     return Err(self.err("only one contract is allowed"));
@@ -118,8 +184,11 @@ impl Parser {
                 let name = self.eat_ident()?;
                 self.expect("'{'", |t| matches!(t, Token::LBrace))?;
                 let mut members = Vec::new();
+                let mut member_spans = Vec::new();
                 while !matches!(self.current(), Token::RBrace) {
+                    let member_start = self.index;
                     members.push(self.parse_contract_member()?);
+                    member_spans.push(self.span_from(member_start));
                 }
                 self.expect("'}'", |t| matches!(t, Token::RBrace))?;
                 source.contract = Some(ContractDecl {
@@ -127,8 +196,10 @@ impl Parser {
                     name,
                     members,
                 });
+                source.contract_member_spans = member_spans;
             } else {
                 source.functions.push(self.parse_function_decl_rest(attrs)?);
+                source.function_spans.push(self.span_from(item_start));
             }
         }
         Ok(source)
@@ -216,7 +287,10 @@ impl Parser {
         self.expect("'{'", |token| matches!(token, Token::LBrace))?;
         let mut fields = Vec::new();
         let mut methods = Vec::new();
+        let mut field_spans = Vec::new();
+        let mut method_spans = Vec::new();
         while !matches!(self.current(), Token::RBrace) {
+            let member_start = self.index;
             let attrs = self.parse_attributes_opt()?;
             let ty = self.parse_type()?;
             let mem_name = self.eat_ident()?;
@@ -232,22 +306,27 @@ impl Parser {
                     params,
                     body,
                 });
+                method_spans.push(self.span_from(member_start));
             } else {
                 if !attrs.is_empty() {
                     return Err(self.err("struct fields cannot have attributes"));
                 }
-                let init = if matches!(self.current(), Token::Eq) {
+                let (init, init_span) = if matches!(self.current(), Token::Eq) {
                     self.bump();
-                    Some(self.parse_expr()?)
+                    let start = self.index;
+                    let expr = self.parse_expr()?;
+                    (Some(expr), Some(self.span_from(start)))
                 } else {
-                    None
+                    (None, None)
                 };
                 self.expect("';'", |token| matches!(token, Token::Semi))?;
                 fields.push(StructField {
                     ty,
                     name: mem_name,
                     init,
+                    init_span,
                 });
+                field_spans.push(self.span_from(member_start));
             }
         }
         self.expect("'}'", |token| matches!(token, Token::RBrace))?;
@@ -255,6 +334,8 @@ impl Parser {
             name,
             fields,
             methods,
+            field_spans,
+            method_spans,
         })
     }
 
@@ -306,9 +387,16 @@ impl Parser {
             let ty = self.parse_type()?;
             let name = self.eat_ident()?;
             self.expect("'='", |token| matches!(token, Token::Eq))?;
+            let init_start = self.index;
             let init = self.parse_expr()?;
+            let init_span = self.span_from(init_start);
             self.expect("';'", |token| matches!(token, Token::Semi))?;
-            return Ok(ContractMember::ConstProp(ConstProp { ty, name, init }));
+            return Ok(ContractMember::ConstProp(ConstProp {
+                ty,
+                name,
+                init,
+                init_span: Some(init_span),
+            }));
         }
         if matches!(self.current(), Token::Event) {
             self.bump();
@@ -335,14 +423,21 @@ impl Parser {
                 body,
             }));
         }
-        let init = if matches!(self.current(), Token::Eq) {
+        let (init, init_span) = if matches!(self.current(), Token::Eq) {
             self.bump();
-            Some(self.parse_expr()?)
+            let start = self.index;
+            let expr = self.parse_expr()?;
+            (Some(expr), Some(self.span_from(start)))
         } else {
-            None
+            (None, None)
         };
         self.expect("';'", |token| matches!(token, Token::Semi))?;
-        Ok(ContractMember::Field(ContractField { ty, name, init }))
+        Ok(ContractMember::Field(ContractField {
+            ty,
+            name,
+            init,
+            init_span,
+        }))
     }
 
     fn parse_attributes_opt(&mut self) -> Result<Vec<Attribute>, ParseError> {
@@ -399,13 +494,21 @@ impl Parser {
     }
 
     fn parse_block(&mut self) -> Result<Block, ParseError> {
+        self.expr_event_stack.push(Vec::new());
         self.expect("'{'", |token| matches!(token, Token::LBrace))?;
         let mut stmts = Vec::new();
+        let mut stmt_spans = Vec::new();
         while !matches!(self.current(), Token::RBrace) {
+            let stmt_start = self.index;
             stmts.push(self.parse_stmt()?);
+            stmt_spans.push(self.span_from(stmt_start));
         }
         self.expect("'}'", |token| matches!(token, Token::RBrace))?;
-        Ok(Block { stmts })
+        Ok(self.finish_block(Block {
+            stmts,
+            stmt_spans,
+            expr_spans: ExprSpanMap::default(),
+        }))
     }
 
     fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
@@ -525,6 +628,7 @@ impl Parser {
             Binary(BinaryOp),
             Assign(AssignOp),
         }
+        let lhs_start = self.index;
         let mut lhs = self.parse_operand()?;
         loop {
             let (l_bp, r_bp, infix_op) = match self.current() {
@@ -565,22 +669,31 @@ impl Parser {
             self.bump();
             let rhs = self.parse_expr_bp(r_bp)?;
             lhs = match infix_op {
-                InfixOp::Binary(op) => Expr::Binary {
-                    op,
-                    left: Box::new(lhs),
-                    right: Box::new(rhs),
-                },
-                InfixOp::Assign(op) => Expr::Assign {
-                    target: Box::new(lhs),
-                    op,
-                    value: Box::new(rhs),
-                },
+                InfixOp::Binary(op) => {
+                    let expr = Expr::Binary {
+                        op,
+                        left: Box::new(lhs),
+                        right: Box::new(rhs),
+                    };
+                    self.push_expr_span(self.span_from(lhs_start));
+                    expr
+                }
+                InfixOp::Assign(op) => {
+                    let expr = Expr::Assign {
+                        target: Box::new(lhs),
+                        op,
+                        value: Box::new(rhs),
+                    };
+                    self.push_expr_span(self.span_from(lhs_start));
+                    expr
+                }
             };
         }
         Ok(lhs)
     }
 
     fn parse_operand(&mut self) -> Result<Expr, ParseError> {
+        let operand_start = self.index;
         let mut unaries = Vec::new();
         loop {
             match self.current() {
@@ -604,12 +717,13 @@ impl Parser {
             }
         }
         let mut expr = self.parse_primary()?;
-        expr = self.parse_postfix_chain(expr)?;
+        expr = self.parse_postfix_chain(expr, operand_start)?;
         for unary in unaries.into_iter().rev() {
             expr = Expr::Unary {
                 op: unary,
                 expr: Box::new(expr),
             };
+            self.push_expr_span(self.span_from(operand_start));
         }
         while matches!(self.current(), Token::As) {
             self.bump();
@@ -618,11 +732,16 @@ impl Parser {
                 expr: Box::new(expr),
                 ty,
             };
+            self.push_expr_span(self.span_from(operand_start));
         }
         Ok(expr)
     }
 
-    fn parse_postfix_chain(&mut self, mut expr: Expr) -> Result<Expr, ParseError> {
+    fn parse_postfix_chain(
+        &mut self,
+        mut expr: Expr,
+        expr_start: usize,
+    ) -> Result<Expr, ParseError> {
         loop {
             match self.current().clone() {
                 Token::Dot => {
@@ -632,6 +751,7 @@ impl Parser {
                         base: Box::new(expr),
                         field: field,
                     };
+                    self.push_expr_span(self.span_from(expr_start));
                 }
                 Token::LBracket => {
                     self.bump();
@@ -641,6 +761,7 @@ impl Parser {
                         base: Box::new(expr),
                         index: Box::new(index),
                     };
+                    self.push_expr_span(self.span_from(expr_start));
                 }
                 Token::LParen => {
                     self.bump();
@@ -650,6 +771,7 @@ impl Parser {
                         callee: Box::new(expr),
                         args,
                     };
+                    self.push_expr_span(self.span_from(expr_start));
                 }
                 Token::LBrace => {
                     // Only PascalCase names: avoids `for x in arr { }` parsing as struct `arr { }`.
@@ -666,6 +788,8 @@ impl Parser {
                     let fields = self.parse_struct_field_inits()?;
                     self.expect("'}'", |token| matches!(token, Token::RBrace))?;
                     expr = Expr::StructLit { name, fields };
+                    self.pop_expr_span();
+                    self.push_expr_span(self.span_from(expr_start));
                 }
                 _ => break,
             }
@@ -696,19 +820,54 @@ impl Parser {
         if let Some(expr) = self.try_parse_type_then_brace_literal()? {
             return Ok(expr);
         }
+        let start = self.index;
         match self.bump() {
-            Token::Null => Ok(Expr::Literal(Literal::Null)),
-            Token::True => Ok(Expr::Literal(Literal::Bool(true))),
-            Token::False => Ok(Expr::Literal(Literal::Bool(false))),
-            Token::Self_ => Ok(Expr::Self_),
-            Token::IntLit(raw) => Ok(Expr::Literal(Literal::Int(raw))),
-            Token::StringLit(s) => Ok(Expr::Literal(Literal::String(s))),
-            Token::BufferLit(s) => Ok(Expr::Literal(Literal::Buffer(s))),
-            Token::Ident(name) => Ok(Expr::Ident(name)),
+            Token::Null => {
+                let expr = Expr::Literal(Literal::Null);
+                self.push_expr_span(self.span_from(start));
+                Ok(expr)
+            }
+            Token::True => {
+                let expr = Expr::Literal(Literal::Bool(true));
+                self.push_expr_span(self.span_from(start));
+                Ok(expr)
+            }
+            Token::False => {
+                let expr = Expr::Literal(Literal::Bool(false));
+                self.push_expr_span(self.span_from(start));
+                Ok(expr)
+            }
+            Token::Self_ => {
+                let expr = Expr::Self_;
+                self.push_expr_span(self.span_from(start));
+                Ok(expr)
+            }
+            Token::IntLit(raw) => {
+                let expr = Expr::Literal(Literal::Int(raw));
+                self.push_expr_span(self.span_from(start));
+                Ok(expr)
+            }
+            Token::StringLit(s) => {
+                let expr = Expr::Literal(Literal::String(s));
+                self.push_expr_span(self.span_from(start));
+                Ok(expr)
+            }
+            Token::BufferLit(s) => {
+                let expr = Expr::Literal(Literal::Buffer(s));
+                self.push_expr_span(self.span_from(start));
+                Ok(expr)
+            }
+            Token::Ident(name) => {
+                let expr = Expr::Ident(name);
+                self.push_expr_span(self.span_from(start));
+                Ok(expr)
+            }
             Token::LParen => {
                 let inner = self.parse_expr()?;
                 self.expect("')'", |token| matches!(token, Token::RParen))?;
-                Ok(Expr::Paren(Box::new(inner)))
+                let expr = Expr::Paren(Box::new(inner));
+                self.push_expr_span(self.span_from(start));
+                Ok(expr)
             }
             Token::LBracket => {
                 Err(self.err("array literal must specify element type: use ElemType[] { ... }"))
@@ -754,6 +913,7 @@ impl Parser {
                 return Ok(None);
             }
         };
+        self.push_expr_span(self.span_from(checkpoint));
         Ok(Some(expr))
     }
 
@@ -853,6 +1013,137 @@ impl Parser {
             }
             Token::Ident(n) => Ok(Type::Named(n)),
             token => Err(self.err(format!("expected type, got {token:?}"))),
+        }
+    }
+}
+
+fn build_expr_span_map(block: &Block, mut events: Vec<Span>) -> ExprSpanMap {
+    let mut map = ExprSpanMap::default();
+    let mut iter = events.drain(..);
+    for stmt in &block.stmts {
+        collect_stmt_exprs(stmt, &mut iter, &mut map);
+    }
+    debug_assert!(iter.next().is_none(), "unmatched expression span events");
+    map
+}
+
+fn collect_stmt_exprs(stmt: &Stmt, spans: &mut impl Iterator<Item = Span>, map: &mut ExprSpanMap) {
+    match stmt {
+        Stmt::Var { init, .. } => {
+            if let Some(expr) = init {
+                collect_expr(expr, spans, map);
+            }
+        }
+        Stmt::Expr(expr) => collect_expr(expr, spans, map),
+        Stmt::If {
+            cond,
+            then_block,
+            else_block,
+        } => {
+            collect_expr(cond, spans, map);
+            collect_block_exprs(then_block, spans, map);
+            if let Some(else_block) = else_block {
+                collect_block_exprs(else_block, spans, map);
+            }
+        }
+        Stmt::While { cond, body } => {
+            collect_expr(cond, spans, map);
+            collect_block_exprs(body, spans, map);
+        }
+        Stmt::ForArray { iter, body, .. } => {
+            collect_expr(iter, spans, map);
+            collect_block_exprs(body, spans, map);
+        }
+        Stmt::ForMap {
+            map: map_expr,
+            body,
+            ..
+        } => {
+            collect_expr(map_expr, spans, map);
+            collect_block_exprs(body, spans, map);
+        }
+        Stmt::Return(Some(expr)) => collect_expr(expr, spans, map),
+        Stmt::Return(None) => {}
+        Stmt::Emit { args, .. } => {
+            for expr in args {
+                collect_expr(expr, spans, map);
+            }
+        }
+        Stmt::Block(block) => collect_block_exprs(block, spans, map),
+    }
+}
+
+fn collect_block_exprs(
+    block: &Block,
+    spans: &mut impl Iterator<Item = Span>,
+    map: &mut ExprSpanMap,
+) {
+    for stmt in &block.stmts {
+        collect_stmt_exprs(stmt, spans, map);
+    }
+}
+
+fn collect_expr(expr: &Expr, spans: &mut impl Iterator<Item = Span>, map: &mut ExprSpanMap) {
+    match expr {
+        Expr::Literal(_) | Expr::Ident(_) | Expr::Self_ => {
+            map.insert(expr, spans.next().unwrap_or_default());
+        }
+        Expr::Paren(inner) => {
+            collect_expr(inner, spans, map);
+            map.insert(expr, spans.next().unwrap_or_default());
+        }
+        Expr::Unary { expr: inner, .. } => {
+            collect_expr(inner, spans, map);
+            map.insert(expr, spans.next().unwrap_or_default());
+        }
+        Expr::Cast { expr: inner, .. } => {
+            collect_expr(inner, spans, map);
+            map.insert(expr, spans.next().unwrap_or_default());
+        }
+        Expr::Binary { left, right, .. } => {
+            collect_expr(left, spans, map);
+            collect_expr(right, spans, map);
+            map.insert(expr, spans.next().unwrap_or_default());
+        }
+        Expr::Assign { target, value, .. } => {
+            collect_expr(target, spans, map);
+            collect_expr(value, spans, map);
+            map.insert(expr, spans.next().unwrap_or_default());
+        }
+        Expr::Member { base, .. } => {
+            collect_expr(base, spans, map);
+            map.insert(expr, spans.next().unwrap_or_default());
+        }
+        Expr::Index { base, index } => {
+            collect_expr(base, spans, map);
+            collect_expr(index, spans, map);
+            map.insert(expr, spans.next().unwrap_or_default());
+        }
+        Expr::Call { callee, args } => {
+            collect_expr(callee, spans, map);
+            for arg in args {
+                collect_expr(arg, spans, map);
+            }
+            map.insert(expr, spans.next().unwrap_or_default());
+        }
+        Expr::StructLit { fields, .. } => {
+            for (_, expr) in fields {
+                collect_expr(expr, spans, map);
+            }
+            map.insert(expr, spans.next().unwrap_or_default());
+        }
+        Expr::MapLit { pairs, .. } => {
+            for (key, value) in pairs {
+                collect_expr(key, spans, map);
+                collect_expr(value, spans, map);
+            }
+            map.insert(expr, spans.next().unwrap_or_default());
+        }
+        Expr::ArrayLit { elements, .. } => {
+            for expr in elements {
+                collect_expr(expr, spans, map);
+            }
+            map.insert(expr, spans.next().unwrap_or_default());
         }
     }
 }

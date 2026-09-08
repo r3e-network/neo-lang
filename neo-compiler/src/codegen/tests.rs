@@ -511,13 +511,11 @@ fn simple_add() -> FunctionDecl {
                 name: "b".into(),
             },
         ],
-        body: Block {
-            stmts: vec![Stmt::Return(Some(Expr::Binary {
-                op: BinaryOp::Add,
-                left: Box::new(Expr::Ident("a".into())),
-                right: Box::new(Expr::Ident("b".into())),
-            }))],
-        },
+        body: Block::new(vec![Stmt::Return(Some(Expr::Binary {
+            op: BinaryOp::Add,
+            left: Box::new(Expr::Ident("a".into())),
+            right: Box::new(Expr::Ident("b".into())),
+        }))]),
     }
 }
 
@@ -565,7 +563,7 @@ fn void_function_implicit_return_emits_ret_without_pushnull() {
         return_ty: Type::Void,
         name: "noop".into(),
         params: vec![],
-        body: Block { stmts: vec![] },
+        body: Block::new(vec![]),
     };
     let fns = HashMap::new();
     let ctx = FunctionCompileContext::new(&[], &fns);
@@ -850,15 +848,13 @@ fn assert_lowers_to_assertmsg() {
         return_ty: Type::Void,
         name: "c".into(),
         params: vec![],
-        body: Block {
-            stmts: vec![Stmt::Expr(Expr::Call {
-                callee: Box::new(Expr::Ident("assert".into())),
-                args: vec![
-                    Expr::Literal(Literal::Bool(true)),
-                    Expr::Literal(Literal::String("ok".into())),
-                ],
-            })],
-        },
+        body: Block::new(vec![Stmt::Expr(Expr::Call {
+            callee: Box::new(Expr::Ident("assert".into())),
+            args: vec![
+                Expr::Literal(Literal::Bool(true)),
+                Expr::Literal(Literal::String("ok".into())),
+            ],
+        })]),
     };
     let fns = HashMap::new();
     let ctx = FunctionCompileContext::new(&[], &fns);
@@ -880,15 +876,13 @@ fn min_stmt_emits_drop_after_min() {
         return_ty: Type::Void,
         name: "c".into(),
         params: vec![],
-        body: Block {
-            stmts: vec![Stmt::Expr(Expr::Call {
-                callee: Box::new(Expr::Ident("min".into())),
-                args: vec![
-                    Expr::Literal(Literal::Int("1".into())),
-                    Expr::Literal(Literal::Int("2".into())),
-                ],
-            })],
-        },
+        body: Block::new(vec![Stmt::Expr(Expr::Call {
+            callee: Box::new(Expr::Ident("min".into())),
+            args: vec![
+                Expr::Literal(Literal::Int("1".into())),
+                Expr::Literal(Literal::Int("2".into())),
+            ],
+        })]),
     };
     let fns = HashMap::new();
     let ctx = FunctionCompileContext::new(&[], &fns);
@@ -928,15 +922,13 @@ fn package_level_body_call_emits_call_l_when_add_is_in_arity_map() {
         return_ty: Type::Int,
         name: "caller".into(),
         params: vec![],
-        body: Block {
-            stmts: vec![Stmt::Return(Some(Expr::Call {
-                callee: Box::new(Expr::Ident("add".into())),
-                args: vec![
-                    Expr::Literal(Literal::Int("10".into())),
-                    Expr::Literal(Literal::Int("20".into())),
-                ],
-            }))],
-        },
+        body: Block::new(vec![Stmt::Return(Some(Expr::Call {
+            callee: Box::new(Expr::Ident("add".into())),
+            args: vec![
+                Expr::Literal(Literal::Int("10".into())),
+                Expr::Literal(Literal::Int("20".into())),
+            ],
+        }))]),
     };
     let ctx = FunctionCompileContext::new(&[], &fns);
     let compiled = compile_fn(&f, &ctx).unwrap();

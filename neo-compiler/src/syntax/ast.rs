@@ -1,5 +1,9 @@
 //! Abstract syntax tree for neo-lang (see README.md).
 
+use std::collections::HashMap;
+
+use crate::diagnostic::Span;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourceFile {
     pub package: Option<String>,
@@ -7,6 +11,9 @@ pub struct SourceFile {
     pub structs: Vec<StructDecl>,
     pub functions: Vec<FunctionDecl>,
     pub contract: Option<ContractDecl>, // only one contract is allowed
+    pub struct_spans: Vec<Span>,
+    pub function_spans: Vec<Span>,
+    pub contract_member_spans: Vec<Span>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -59,6 +66,7 @@ pub struct ConstProp {
     pub ty: Type,
     pub name: String,
     pub init: Expr,
+    pub init_span: Option<Span>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -66,6 +74,7 @@ pub struct ContractField {
     pub ty: Type,
     pub name: String,
     pub init: Option<Expr>,
+    pub init_span: Option<Span>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,6 +88,26 @@ pub struct StructDecl {
     pub name: String,
     pub fields: Vec<StructField>,
     pub methods: Vec<FunctionDecl>,
+    pub field_spans: Vec<Span>,
+    pub method_spans: Vec<Span>,
+}
+
+impl StructDecl {
+    pub fn new(
+        name: impl Into<String>,
+        fields: Vec<StructField>,
+        methods: Vec<FunctionDecl>,
+    ) -> Self {
+        let field_spans = vec![Span::default(); fields.len()];
+        let method_spans = vec![Span::default(); methods.len()];
+        Self {
+            name: name.into(),
+            fields,
+            methods,
+            field_spans,
+            method_spans,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -86,6 +115,7 @@ pub struct StructField {
     pub ty: Type,
     pub name: String,
     pub init: Option<Expr>,
+    pub init_span: Option<Span>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -112,6 +142,50 @@ pub struct Attribute {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block {
     pub stmts: Vec<Stmt>,
+    pub stmt_spans: Vec<Span>,
+    pub expr_spans: ExprSpanMap,
+}
+
+impl Block {
+    pub fn new(stmts: Vec<Stmt>) -> Self {
+        let stmt_spans = vec![Span::default(); stmts.len()];
+        Self {
+            stmts,
+            stmt_spans,
+            expr_spans: ExprSpanMap::default(),
+        }
+    }
+}
+
+/// Spans for expression nodes in a block, keyed by node address.
+///
+/// The map is intentionally cheap to clone: a clone represents a different
+/// object graph, so the old raw addresses are meaningless.
+#[derive(Debug, Default)]
+pub struct ExprSpanMap {
+    spans: HashMap<usize, Span>,
+}
+
+impl ExprSpanMap {
+    pub(crate) fn insert(&mut self, expr: &Expr, span: Span) {
+        self.spans.insert(expr as *const Expr as usize, span);
+    }
+
+    pub(crate) fn get(&self, expr: &Expr) -> Option<Span> {
+        self.spans.get(&(expr as *const Expr as usize)).copied()
+    }
+}
+
+impl Clone for ExprSpanMap {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl PartialEq for ExprSpanMap {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -68,13 +68,13 @@ impl<'a, 'b> ExprGen<'a, 'b> {
                     self.builder.emit_ldslot(slot);
                     Ok(())
                 }
-                Err(_) => Err(CodegenError::Unsupported(
+                Err(_) => Err(CodegenError::unsupported(
                     "`self` cannot stand alone; use `self.field` instead`".into(),
                 )),
             },
             Expr::Cast { expr: inner, ty } => {
                 let op = get_operand_for_type(ty).ok_or_else(|| {
-                    CodegenError::Unsupported(format!(
+                    CodegenError::unsupported(format!(
                         "`as` to `{ty:?}` is not supported in codegen yet"
                     ))
                 })?;

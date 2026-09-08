@@ -31,7 +31,7 @@ impl ExprGen<'_, '_> {
                     return self.compile_struct_call(receiver_variable, field, args);
                 }
             }
-            return Err(CodegenError::Unsupported(
+            return Err(CodegenError::unsupported(
                 "only `runtime.<method>`, external contracts, struct instance `var.method(...)`, or `self.method(...)` support `x.y(...)` call syntax"
                     .into(),
             ));
@@ -42,7 +42,7 @@ impl ExprGen<'_, '_> {
             }
             if let Some(sig) = self.package_fns.get(name) {
                 if args.len() != sig.arity {
-                    return Err(CodegenError::Unsupported(format!(
+                    return Err(CodegenError::unsupported(format!(
                         "call to `{name}` expects {} argument(s), got {}",
                         sig.arity,
                         args.len()
@@ -56,7 +56,7 @@ impl ExprGen<'_, '_> {
                 return Ok(());
             }
         }
-        Err(CodegenError::Unsupported(
+        Err(CodegenError::unsupported(
             "only package-level functions, built-in functions, struct methods, and runtime.* calls are supported"
                 .into(),
         ))
@@ -69,14 +69,14 @@ impl ExprGen<'_, '_> {
         args: &[Expr],
     ) -> Result<(), CodegenError> {
         let extern_method = contract.resolve_method(method, args.len()).ok_or_else(|| {
-            CodegenError::Unsupported(format!(
+            CodegenError::unsupported(format!(
                 "external call `{}.{method}` with {} argument(s) is not defined",
                 contract.name,
                 args.len()
             ))
         })?;
         let parameters_count = u16::try_from(args.len()).map_err(|_| {
-            CodegenError::Unsupported(format!(
+            CodegenError::unsupported(format!(
                 "external call `{}.{method}` has too many arguments",
                 contract.name
             ))

@@ -12,20 +12,20 @@ impl ExprGen<'_, '_> {
         args: &[Expr],
     ) -> Result<(), CodegenError> {
         let contract_name = self.contract_name.ok_or_else(|| {
-            CodegenError::Unsupported(
+            CodegenError::unsupported(
                 "`self.method(...)` is only valid inside contract methods".into(),
             )
         })?;
         let fn_table = self.contract_fns.ok_or_else(|| {
-            CodegenError::Unsupported(
+            CodegenError::unsupported(
                 "internal: contract method table missing for `self.method(...)`".into(),
             )
         })?;
         let sig = fn_table.get(method).ok_or_else(|| {
-            CodegenError::Unsupported(format!("contract has no method `{method}`"))
+            CodegenError::unsupported(format!("contract has no method `{method}`"))
         })?;
         if args.len() != sig.arity {
-            return Err(CodegenError::Unsupported(format!(
+            return Err(CodegenError::unsupported(format!(
                 "`self.{method}` expects {} argument(s), got {}",
                 sig.arity,
                 args.len()

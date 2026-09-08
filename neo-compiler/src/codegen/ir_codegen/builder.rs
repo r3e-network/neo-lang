@@ -56,12 +56,12 @@ impl Builder {
             Type::String | Type::Hash160 | Type::Hash256 => StackItemType::ByteString as u8,
             Type::Buffer => StackItemType::Buffer as u8,
             Type::Array(_) | Type::Map { .. } => {
-                return Err(CodegenError::Unsupported(format!(
+                return Err(CodegenError::unsupported(format!(
                     "ir-codegen: storage load as `{ty:?}` is not implemented",
                 )));
             }
             Type::Void | Type::Any | Type::Named(_) => {
-                return Err(CodegenError::Unsupported(format!(
+                return Err(CodegenError::unsupported(format!(
                     "ir-codegen: storage load as `{ty:?}` is not supported",
                 )));
             }
@@ -77,7 +77,7 @@ impl Builder {
                 StackItemType::Buffer as u8
             }
             _ => {
-                return Err(CodegenError::Unsupported(format!(
+                return Err(CodegenError::unsupported(format!(
                     "ir-codegen: storage put for `{ty:?}` is not implemented",
                 )));
             }
@@ -93,7 +93,7 @@ impl Builder {
                 Ok(())
             }
             Type::Buffer => Ok(()),
-            _ => Err(CodegenError::Unsupported(format!(
+            _ => Err(CodegenError::unsupported(format!(
                 "ir-codegen: map storage key type `{key_ty:?}` is not supported",
             ))),
         }
@@ -101,7 +101,7 @@ impl Builder {
 
     fn compound_assign_opcode(op: AssignOp) -> Result<OpCode, CodegenError> {
         if matches!(op, AssignOp::Assign) {
-            return Err(CodegenError::Unsupported(
+            return Err(CodegenError::unsupported(
                 "ir-codegen: compound assign opcode for `=`".into(),
             ));
         }
@@ -141,7 +141,7 @@ impl Builder {
                 if current_block == ctx.entry_bb {
                     let index = id as u8;
                     if index >= ctx.arg_count {
-                        return Err(CodegenError::Unsupported(format!(
+                        return Err(CodegenError::unsupported(format!(
                             "ir-codegen: param index {index} out of range for arg_count {}",
                             ctx.arg_count,
                         )));
@@ -154,7 +154,7 @@ impl Builder {
                         .get(&(current_block, id))
                         .copied()
                         .ok_or_else(|| {
-                            CodegenError::Unsupported(format!(
+                            CodegenError::unsupported(format!(
                                 "ir-codegen: unknown param {id} in block {:?}",
                                 current_block
                             ))
@@ -201,7 +201,7 @@ impl Builder {
                     .get(&id)
                     .or_else(|| all_defs.get(id.0).and_then(|x| x.as_ref()))
                     .ok_or_else(|| {
-                        CodegenError::Unsupported("ir-codegen: missing spilled value def".into())
+                        CodegenError::unsupported("ir-codegen: missing spilled value def".into())
                     })?;
                 self.emit_pure_instr_stackified(ctx, emitted_spills, current_block, instr)?;
                 // Keep a copy for both stack (this use) and local slot (future uses).
@@ -210,7 +210,7 @@ impl Builder {
                 emitted_spills.insert(id);
                 return Ok(());
             }
-            return Err(CodegenError::Unsupported(
+            return Err(CodegenError::unsupported(
                 "ir-codegen: spilled value missing slot".into(),
             ));
         }
@@ -219,13 +219,13 @@ impl Builder {
             .get(&id)
             .or_else(|| all_defs.get(id.0).and_then(|x| x.as_ref()))
             .ok_or_else(|| {
-                CodegenError::Unsupported(format!(
+                CodegenError::unsupported(format!(
                     "ir-codegen: unknown value {:?} in block {:?}",
                     id, current_block
                 ))
             })?;
         if instr.has_side_effects() {
-            return Err(CodegenError::Unsupported(
+            return Err(CodegenError::unsupported(
                 "ir-codegen: side-effect value must be spilled or emitted in order".into(),
             ));
         }
@@ -263,7 +263,7 @@ impl Builder {
                 Ok(())
             }
             Instr::IndexSet { .. } | Instr::StructFieldSet { .. } => {
-                Err(CodegenError::Unsupported(
+                Err(CodegenError::unsupported(
                     "ir-codegen: IndexSet/StructFieldSet must be emitted in-order".into(),
                 ))
             }
@@ -272,12 +272,12 @@ impl Builder {
                 // join-slot phi; `LDARG i` is valid on every basic block in the routine.
                 ValueRef::Param(ParamId(idx)) => {
                     let index = u8::try_from(idx).map_err(|_| {
-                        CodegenError::Unsupported(
+                        CodegenError::unsupported(
                             "internal: formal index overflow for LDARG".into(),
                         )
                     })?;
                     if index >= ctx.arg_count {
-                        return Err(CodegenError::Unsupported(
+                        return Err(CodegenError::unsupported(
                             "internal: Copy(Param(i)) with i >= arg_count".into(),
                         ));
                     }
@@ -314,7 +314,7 @@ impl Builder {
                     self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *right)?;
                 }
                 if matches!(op, BinaryOp::And | BinaryOp::Or) {
-                    return Err(CodegenError::Unsupported(
+                    return Err(CodegenError::unsupported(
                         "ir-codegen: logical and/or not supported".into(),
                     ));
                 }
@@ -458,7 +458,7 @@ impl Builder {
             Instr::Cast { value, ty } => {
                 self.emit_value_ref_stackified(ctx, emitted_spills, current_block, *value)?;
                 let op = get_operand_for_type(ty).ok_or_else(|| {
-                    CodegenError::Unsupported(format!(
+                    CodegenError::unsupported(format!(
                         "ir-codegen: `as` to `{ty:?}` is not supported yet",
                     ))
                 })?;
@@ -469,7 +469,7 @@ impl Builder {
                 self.emit_builtin_emit_plan(ctx, emitted_spills, current_block, *builtin, args)?;
                 Ok(())
             }
-            _ => Err(CodegenError::Unsupported(
+            _ => Err(CodegenError::unsupported(
                 "ir-codegen: unknown instruction".into(),
             )),
         }
@@ -585,7 +585,7 @@ impl Builder {
                 op,
             } => {
                 let pair = mux.compound_pairs.get(*mux.compound_index).ok_or_else(|| {
-                    CodegenError::Unsupported("ir-codegen: compound scratch slots".into())
+                    CodegenError::unsupported("ir-codegen: compound scratch slots".into())
                 })?;
                 *mux.compound_index += 1;
                 let key_slot = pair.0;
@@ -656,7 +656,7 @@ impl Builder {
                 }
                 self.push_int(
                     args.len().try_into().map_err(|_| {
-                        CodegenError::Unsupported("ir-codegen: emit arg count".into())
+                        CodegenError::unsupported("ir-codegen: emit arg count".into())
                     })?,
                 );
                 self.emit(OpCode::PACK);
@@ -757,7 +757,7 @@ impl Builder {
                     hash: contract.hash,
                     method: method.clone(),
                     parameters_count: u16::try_from(args.len()).map_err(|_| {
-                        CodegenError::Unsupported("ir-codegen: external call arg count".into())
+                        CodegenError::unsupported("ir-codegen: external call arg count".into())
                     })?,
                     has_return_value: !matches!(return_ty, Type::Void),
                     call_flags: contract.call_flags,
@@ -900,10 +900,10 @@ impl Builder {
                 self.emit(OpCode::REMOVE);
                 Ok(())
             }
-            Instr::EvalAst(_) => Err(CodegenError::Unsupported(
+            Instr::EvalAst(_) => Err(CodegenError::unsupported(
                 "ir-codegen: EvalAst should not appear in phase 1".into(),
             )),
-            _ => Err(CodegenError::Unsupported(
+            _ => Err(CodegenError::unsupported(
                 "ir-codegen: unexpected non-side-effect instruction in ordered emission".into(),
             )),
         }

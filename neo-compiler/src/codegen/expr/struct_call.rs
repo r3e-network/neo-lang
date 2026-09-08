@@ -18,7 +18,7 @@ impl ExprGen<'_, '_> {
             .get(receiver_variable)
             .cloned()
             .ok_or_else(|| {
-                CodegenError::Unsupported(format!(
+                CodegenError::unsupported(format!(
                     "`{receiver_variable}.method(...)` needs `{receiver_variable}` to be a struct-typed variable"
                 ))
             })?;
@@ -26,14 +26,14 @@ impl ExprGen<'_, '_> {
             .structs
             .iter()
             .find(|s| s.name == struct_name)
-            .ok_or_else(|| CodegenError::Unsupported(format!("unknown struct `{struct_name}`")))?;
+            .ok_or_else(|| CodegenError::unsupported(format!("unknown struct `{struct_name}`")))?;
         let method_decl = struct_decl.methods.iter().find(|m| m.name == method).ok_or_else(|| {
-            CodegenError::Unsupported(format!(
+            CodegenError::unsupported(format!(
                 "struct `{struct_name}` has no method `{method}` (for `{receiver_variable}.{method}(...)`)"
             ))
         })?;
         if args.len() != method_decl.params.len() {
-            return Err(CodegenError::Unsupported(format!(
+            return Err(CodegenError::unsupported(format!(
                 "`{struct_name}::{method}` expects {} argument(s), got {}",
                 method_decl.params.len(),
                 args.len()

@@ -17,7 +17,7 @@ impl ExprGen<'_, '_> {
                     .get(var)
                     .cloned()
                     .ok_or_else(|| {
-                        CodegenError::Unsupported(
+                        CodegenError::unsupported(
                             "member access needs a variable with struct type".into(),
                         )
                     })?;
@@ -36,7 +36,7 @@ impl ExprGen<'_, '_> {
                     return self.compile_contract_member_load(field);
                 }
                 let struct_name = self.value_struct.get("self").cloned().ok_or_else(|| {
-                    CodegenError::Unsupported(
+                    CodegenError::unsupported(
                         "`self.member` needs a contract field or a struct method `self` parameter"
                             .into(),
                     )
@@ -48,7 +48,7 @@ impl ExprGen<'_, '_> {
                 self.builder.emit(OpCode::PICKITEM);
                 Ok(())
             }
-            _ => Err(CodegenError::Unsupported(
+            _ => Err(CodegenError::unsupported(
                 "only `variable.field` or `self.field` member access is allowed (no chained `a.b.c` yet)"
                     .into(),
             )),
@@ -65,7 +65,7 @@ impl ExprGen<'_, '_> {
             .iter()
             .find(|s| s.name == *name)
             .ok_or_else(|| {
-                CodegenError::Unsupported(format!("unknown struct `{name}` in literal"))
+                CodegenError::unsupported(format!("unknown struct `{name}` in literal"))
             })?;
         for field in &struct_decl.fields {
             let init = fields
@@ -83,7 +83,7 @@ impl ExprGen<'_, '_> {
                 .fields
                 .len()
                 .try_into()
-                .map_err(|_| CodegenError::Unsupported("struct too many fields".into()))?,
+                .map_err(|_| CodegenError::unsupported("struct too many fields".into()))?,
         );
         self.builder.emit(OpCode::PACK);
         Ok(())
@@ -113,7 +113,7 @@ impl ExprGen<'_, '_> {
             pairs
                 .len()
                 .try_into()
-                .map_err(|_| CodegenError::Unsupported("map literal too large".into()))?,
+                .map_err(|_| CodegenError::unsupported("map literal too large".into()))?,
         );
         self.builder.emit(OpCode::PACKMAP);
         Ok(())
@@ -127,7 +127,7 @@ impl ExprGen<'_, '_> {
             items
                 .len()
                 .try_into()
-                .map_err(|_| CodegenError::Unsupported("array literal too large".into()))?,
+                .map_err(|_| CodegenError::unsupported("array literal too large".into()))?,
         );
         self.builder.emit(OpCode::PACK);
         Ok(())
@@ -143,10 +143,10 @@ impl ExprGen<'_, '_> {
             .iter()
             .find(|s| s.name == struct_name)
             .ok_or_else(|| {
-                CodegenError::Unsupported(format!("unknown struct type `{struct_name}`"))
+                CodegenError::unsupported(format!("unknown struct type `{struct_name}`"))
             })?;
         fields.iter().position(|f| f.name == field).ok_or_else(|| {
-            CodegenError::Unsupported(format!("struct `{struct_name}` has no field `{field}`"))
+            CodegenError::unsupported(format!("struct `{struct_name}` has no field `{field}`"))
         })
     }
 
@@ -157,7 +157,7 @@ impl ExprGen<'_, '_> {
         self.contract_fields
             .iter()
             .find(|f| f.name == field)
-            .ok_or_else(|| CodegenError::Unsupported(format!("unknown contract field `{field}`")))
+            .ok_or_else(|| CodegenError::unsupported(format!("unknown contract field `{field}`")))
     }
 
     pub(super) fn contract_self_map_field_types(
@@ -187,7 +187,7 @@ impl ExprGen<'_, '_> {
                 (*key.as_ref()).clone(),
                 (*value.as_ref()).clone(),
             ))),
-            _ => Err(CodegenError::Unsupported(format!(
+            _ => Err(CodegenError::unsupported(format!(
                 "only `map` contract fields support `[`index`]`; field `{field_name}` is not a map"
             ))),
         }
